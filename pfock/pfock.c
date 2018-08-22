@@ -18,6 +18,8 @@
 #include "screening.h"
 #include "one_electron.h"
 
+#include "Buzz_Matrix.h"
+#include "utils.h"
 
 static PFockStatus_t init_fock(PFock_t pfock)
 {
@@ -365,14 +367,28 @@ static PFockStatus_t create_GA (PFock_t pfock)
         PFOCK_PRINTF(1, "memory allocation failed\n");
         return PFOCK_STATUS_ALLOC_FAILED;        
     }
-
     sprintf(str, "D_0");
     pfock->ga_D[0] = NGA_Create_irreg(C_DBL, 2, dims, str, block, map);
     if (0 == pfock->ga_D[0]) {
         PFOCK_PRINTF(1, "GA allocation failed\n");
         return PFOCK_STATUS_ALLOC_FAILED;
     }
-    
+
+    PFock_getLocalMatInds(pfock, &pfock->D_rowstart, &pfock->D_rowend, &pfock->D_colstart, &pfock->D_colend);    
+    int nthreads = omp_get_max_threads();
+    int my_rank;
+    MPI_Comm_rank(MPI_COMM_WORLD, &my_rank);
+    MPI_Comm comm_world;
+    MPI_Comm_dup(MPI_COMM_WORLD, &comm_world);
+    Buzz_createBuzzMatrix(
+        &pfock->bm, comm_world, MPI_DOUBLE, 8,
+        my_rank, pfock->nbf, pfock->nbf, 
+        pfock->nprow, pfock->npcol,
+        pfock->rowptr_f, pfock->colptr_f, 
+        NULL, 0, nthreads, 0
+    );
+
+
     for (int i = 0; i < pfock->max_numdmat2; i++) {
         if (i != 0) {                
             sprintf(str, "D_%d", i);
@@ -419,6 +435,7 @@ static void destroy_GA(PFock_t pfock)
     PFOCK_FREE(pfock->ga_F);
     PFOCK_FREE(pfock->ga_K);
     
+    Buzz_destroyBuzzMatrix(pfock->bm);
 }
 
 
@@ -678,7 +695,7 @@ static PFockStatus_t create_buffers (PFock_t pfock)
         PFOCK_PRINTF(1, "memory allocation failed\n");
         return PFOCK_STATUS_ALLOC_FAILED;
     }
-    if (myrank == 0) printf("D1, D2, D3 size = %d, Dmat size = %d\n", sizeX1 + sizeX2 + sizeX3, nbf2);
+    if (myrank == 0) printf("D1, D2, D3 size = %d, Dmat size = %ld\n", sizeX1 + sizeX2 + sizeX3, nbf2);
 
     
     // F buf
@@ -1293,9 +1310,23 @@ PFockStatus_t PFock_getMatGAHandle(PFock_t pfock,
     return PFOCK_STATUS_SUCCESS;
 }
 
+// Temporary, to test Buzz_Matrix in load_local_bufD, should be removed in the future
+void copyDblockFromGAtoBuzzMatrix(PFock_t pfock)
+{
+    int GA_ldD, myrank;
+    int lo[2] = {pfock->D_rowstart, pfock->D_colstart};
+    int hi[2] = {pfock->D_rowend,   pfock->D_colend};
+	MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
+    double *GA_Dptr;
+    NGA_Access(pfock->ga_D[0], lo, hi, &GA_Dptr, &GA_ldD);
+    copy_double_matrix_block(
+        pfock->bm->mat_block, pfock->bm->my_ncols, 
+        GA_Dptr, GA_ldD, pfock->bm->my_nrows, pfock->bm->my_ncols
+    );
+    NGA_Release(pfock->ga_D[0], lo, hi);
+}
 
-PFockStatus_t PFock_computeFock(BasisSet_t basis,
-                                PFock_t pfock)
+PFockStatus_t PFock_computeFock(BasisSet_t basis, PFock_t pfock)
 {
 #ifdef GA_NB
     ga_nbhdl_t nbhdlF1;
@@ -1359,6 +1390,9 @@ PFockStatus_t PFock_computeFock(BasisSet_t basis,
 
     double *D_mat = pfock->D_mat;
     
+    Buzz_startBuzzMatrixReadOnlyEpoch(pfock->bm);
+    copyDblockFromGAtoBuzzMatrix(pfock);
+
     gettimeofday (&tv1, NULL);    
     gettimeofday (&tv3, NULL);
     for (int i = 0; i < pfock->num_dmat2; i++) 
@@ -1479,15 +1513,15 @@ PFockStatus_t PFock_computeFock(BasisSet_t basis,
     pfock->stealfrom = 0;
 #ifdef __DYNAMIC__
 #ifdef GA_NB
-    ga_nbhdl_t nbhdlD1;
-    ga_nbhdl_t nbhdlD2;
-    ga_nbhdl_t nbhdlD3;
+    //ga_nbhdl_t nbhdlD1;
+    //ga_nbhdl_t nbhdlD2;
+    //ga_nbhdl_t nbhdlD3;
 #endif
-    double **D1_task;
-    double **D2_task;
-    double **VD1 = pfock->D1;
-    double **VD2 = pfock->D2;
-    double **VD3 = pfock->D3;
+    //double **D1_task;
+    //double **D2_task;
+    //double **VD1 = pfock->D1;
+    //double **VD2 = pfock->D2;
+    //double **VD3 = pfock->D3;
     int prevrow = myrow;
     int prevcol = mycol;   
     /* steal tasks */
@@ -1770,6 +1804,8 @@ PFockStatus_t PFock_computeFock(BasisSet_t basis,
         }
     }
     
+    Buzz_stopBuzzMatrixReadOnlyEpoch(pfock->bm);
+
     return PFOCK_STATUS_SUCCESS;
 }
 

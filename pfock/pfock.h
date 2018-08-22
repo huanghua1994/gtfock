@@ -5,6 +5,8 @@
 #include <omp.h>
 #include "CInt.h"
 
+#include "Buzz_Matrix.h"
+
 /** 
  * @struct  PFock
  * @brief   PFock computing engine.
@@ -151,6 +153,9 @@ struct PFock {
     int *ga_F1;
     int *ga_F2;
     int *ga_F3;
+
+    int D_rowstart, D_rowend, D_colstart, D_colend;
+    Buzz_Matrix_t bm;
     
     // statistics
     double mem_cpu;

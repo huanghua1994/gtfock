@@ -14,6 +14,8 @@
 #include "taskq.h"
 #include "fock_buf.h"
 
+#include "Buzz_Matrix.h"
+
 void load_local_bufD(PFock_t pfock)
 {
     int lo[2];
@@ -114,6 +116,7 @@ void load_local_bufD(PFock_t pfock)
     hi[0] = nbf - 1;
     hi[1] = nbf - 1;
     double *D_mat = pfock->D_mat;
+    /*
     #ifdef GA_NB
     ga_nbhdl_t nbnb;
     NGA_NbGet(pfock->ga_D[0], lo, hi, D_mat, &nbf, &nbnb);
@@ -121,6 +124,11 @@ void load_local_bufD(PFock_t pfock)
     #else
     NGA_Get(pfock->ga_D[0], lo, hi, D_mat, &nbf);
     #endif
+    */
+	
+	// Temporary, to test Buzz_Matrix data distribution, should be removed in the future
+    Buzz_getBlock(pfock->bm, pfock->bm->proc_req_cnt, 0, nbf, 0, nbf, D_mat, nbf);
+    Buzz_flushProcListGetRequests(pfock->bm, pfock->bm->proc_req_cnt);
 }
 
 void store_local_bufF(PFock_t pfock)
