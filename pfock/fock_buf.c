@@ -18,9 +18,9 @@
 
 void load_local_bufD(PFock_t pfock)
 {
+    /*
     int lo[2];
     int hi[2];
-    /*
     int *loadrow = pfock->loadrow;
     int *loadcol = pfock->loadcol;
     int sizerow = pfock->sizeloadrow;
@@ -111,12 +111,12 @@ void load_local_bufD(PFock_t pfock)
     
     // Load full density matrix, num_dmat2 should be 1
     int nbf = pfock->nbf;
+    double *D_mat = pfock->D_mat;
+    /*
     lo[0] = 0;
     lo[1] = 0;
     hi[0] = nbf - 1;
     hi[1] = nbf - 1;
-    double *D_mat = pfock->D_mat;
-    /*
     #ifdef GA_NB
     ga_nbhdl_t nbnb;
     NGA_NbGet(pfock->ga_D[0], lo, hi, D_mat, &nbf, &nbnb);
@@ -127,8 +127,8 @@ void load_local_bufD(PFock_t pfock)
     */
 	
 	// Temporary, to test Buzz_Matrix data distribution, should be removed in the future
-    Buzz_getBlock(pfock->bm, pfock->bm->proc_req_cnt, 0, nbf, 0, nbf, D_mat, nbf);
-    Buzz_flushProcListGetRequests(pfock->bm, pfock->bm->proc_req_cnt);
+    Buzz_getBlock(pfock->bm_Dmat, pfock->bm_Dmat->proc_cnt, 0, nbf, 0, nbf, D_mat, nbf);
+    Buzz_flushProcListGetRequests(pfock->bm_Dmat, pfock->bm_Dmat->proc_cnt);
 }
 
 void store_local_bufF(PFock_t pfock)

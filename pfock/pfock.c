@@ -381,11 +381,11 @@ static PFockStatus_t create_GA (PFock_t pfock)
     MPI_Comm comm_world;
     MPI_Comm_dup(MPI_COMM_WORLD, &comm_world);
     Buzz_createBuzzMatrix(
-        &pfock->bm, comm_world, MPI_DOUBLE, 8,
+        &pfock->bm_Dmat, comm_world, MPI_DOUBLE, 8,
         my_rank, pfock->nbf, pfock->nbf, 
         pfock->nprow, pfock->npcol,
         pfock->rowptr_f, pfock->colptr_f, 
-        NULL, 0, nthreads, 0
+        nthreads, 0
     );
 
 
@@ -435,7 +435,7 @@ static void destroy_GA(PFock_t pfock)
     PFOCK_FREE(pfock->ga_F);
     PFOCK_FREE(pfock->ga_K);
     
-    Buzz_destroyBuzzMatrix(pfock->bm);
+    Buzz_destroyBuzzMatrix(pfock->bm_Dmat);
 }
 
 
@@ -1320,8 +1320,8 @@ void copyDblockFromGAtoBuzzMatrix(PFock_t pfock)
     double *GA_Dptr;
     NGA_Access(pfock->ga_D[0], lo, hi, &GA_Dptr, &GA_ldD);
     copy_double_matrix_block(
-        pfock->bm->mat_block, pfock->bm->my_ncols, 
-        GA_Dptr, GA_ldD, pfock->bm->my_nrows, pfock->bm->my_ncols
+        pfock->bm_Dmat->mat_block, pfock->bm_Dmat->ld_local, 
+        GA_Dptr, GA_ldD, pfock->bm_Dmat->my_nrows, pfock->bm_Dmat->my_ncols
     );
     NGA_Release(pfock->ga_D[0], lo, hi);
 }
@@ -1390,7 +1390,7 @@ PFockStatus_t PFock_computeFock(BasisSet_t basis, PFock_t pfock)
 
     double *D_mat = pfock->D_mat;
     
-    Buzz_startBuzzMatrixReadOnlyEpoch(pfock->bm);
+    Buzz_startBuzzMatrixReadOnlyEpoch(pfock->bm_Dmat);
     copyDblockFromGAtoBuzzMatrix(pfock);
 
     gettimeofday (&tv1, NULL);    
@@ -1804,7 +1804,7 @@ PFockStatus_t PFock_computeFock(BasisSet_t basis, PFock_t pfock)
         }
     }
     
-    Buzz_stopBuzzMatrixReadOnlyEpoch(pfock->bm);
+    Buzz_stopBuzzMatrixReadOnlyEpoch(pfock->bm_Dmat);
 
     return PFOCK_STATUS_SUCCESS;
 }

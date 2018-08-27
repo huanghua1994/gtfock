@@ -155,7 +155,7 @@ struct PFock {
     int *ga_F3;
 
     int D_rowstart, D_rowend, D_colstart, D_colend;
-    Buzz_Matrix_t bm;
+    Buzz_Matrix_t bm_Dmat;
     
     // statistics
     double mem_cpu;
