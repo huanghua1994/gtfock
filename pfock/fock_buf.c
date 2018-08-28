@@ -126,7 +126,6 @@ void load_local_bufD(PFock_t pfock)
     #endif
     */
 	
-	// Temporary, to test Buzz_Matrix data distribution, should be removed in the future
     Buzz_getBlock(pfock->bm_Dmat, pfock->bm_Dmat->proc_cnt, 0, nbf, 0, nbf, D_mat, nbf);
     Buzz_flushProcListGetRequests(pfock->bm_Dmat, pfock->bm_Dmat->proc_cnt);
 }

@@ -1391,7 +1391,7 @@ PFockStatus_t PFock_computeFock(BasisSet_t basis, PFock_t pfock)
     double *D_mat = pfock->D_mat;
     
     Buzz_startBuzzMatrixReadOnlyEpoch(pfock->bm_Dmat);
-    copyDblockFromGAtoBuzzMatrix(pfock);
+    //copyDblockFromGAtoBuzzMatrix(pfock);
 
     gettimeofday (&tv1, NULL);    
     gettimeofday (&tv3, NULL);
