@@ -579,5 +579,11 @@ PFockStatus_t PFock_getMemorySize(PFock_t pfock, double *mem_cpu);
  */
 PFockStatus_t PFock_getStatistics(PFock_t pfock);
 
+void PFock_Buzz_getFockMat(
+	PFock_t pfock,
+	int rowstart, int rowend,
+	int colstart, int colend,
+	int stride,   double *mat
+);
 
 #endif /* #ifndef __PFOCK_H__ */

@@ -141,6 +141,14 @@ void store_local_bufF(PFock_t pfock)
     int lo[2];
     int hi[2];
     int ldF;
+	
+	Buzz_Matrix_t bm_J = pfock->bm_Fmat;
+	#ifdef __SCF__
+	Buzz_Matrix_t bm_K = pfock->bm_Fmat;
+	#else
+	Buzz_Matrix_t bm_K = pfock->bm_Kmat;
+	#endif
+	
     int *ga_J = pfock->ga_F;
 #ifdef __SCF__
     int *ga_K = pfock->ga_F;
@@ -182,12 +190,21 @@ void store_local_bufF(PFock_t pfock)
             lo[1] = loadrow[PLEN * A + P_LO];
             hi[1] = loadrow[PLEN * A + P_HI];
             int posrow = loadrow[PLEN * A + P_W];
+			
+			Buzz_accumulateBlock(
+				bm_J, 
+				lo[0], hi[0] - lo[0] + 1,
+				lo[1], hi[1] - lo[1] + 1,
+				F1 + posrow, ldF1
+			);
+			/*
         #ifdef GA_NB
             NGA_NbAcc(ga_J[i], lo, hi, &(F1[posrow]),
                       &ldF1, &done, &nbnb);    
         #else
             NGA_Acc(ga_J[i], lo, hi, &(F1[posrow]), &ldF1, &done);
         #endif
+			*/
         }
 
         // update F2
@@ -197,12 +214,21 @@ void store_local_bufF(PFock_t pfock)
             lo[1] = loadcol[PLEN * B + P_LO];
             hi[1] = loadcol[PLEN * B + P_HI];
             int poscol = loadcol[PLEN * B + P_W];
+			
+			Buzz_accumulateBlock(
+				bm_J, 
+				lo[0], hi[0] - lo[0] + 1,
+				lo[1], hi[1] - lo[1] + 1,
+				F2 + poscol, ldF2
+			);
+			/*
         #ifdef GA_NB
             NGA_NbAcc(ga_J[i], lo, hi, &(F2[poscol]),
                       &ldF2, &done, &nbnb);
         #else
             NGA_Acc(ga_J[i], lo, hi, &(F2[poscol]), &ldF2, &done);
         #endif
+			*/
         }
 
         // update F3
@@ -214,6 +240,15 @@ void store_local_bufF(PFock_t pfock)
                 lo[1] = loadcol[PLEN * B + P_LO];
                 hi[1] = loadcol[PLEN * B + P_HI];
                 int poscol = loadcol[PLEN * B + P_W];
+				
+				Buzz_accumulateBlock(
+					bm_K, 
+					lo[0], hi[0] - lo[0] + 1,
+					lo[1], hi[1] - lo[1] + 1,
+					F3 + posrow * ldF3 + poscol, ldF3
+				);
+				
+				/*
             #ifdef GA_NB
                 NGA_NbAcc(ga_K[i], lo, hi, 
                           &(F3[posrow * ldF3 + poscol]), &ldF3, &done, &nbnb);
@@ -221,6 +256,7 @@ void store_local_bufF(PFock_t pfock)
                 NGA_Acc(ga_K[i], lo, hi, 
                         &(F3[posrow * ldF3 + poscol]), &ldF3, &done);        
             #endif
+				*/
             }
         }
     #ifdef GA_NB
@@ -240,6 +276,7 @@ void store_local_bufF(PFock_t pfock)
         NGA_Release(pfock->ga_F3[i], lo, hi);
     }
     GA_Sync();
+	MPI_Barrier(MPI_COMM_WORLD);
 }
 
 

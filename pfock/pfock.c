@@ -1384,6 +1384,42 @@ void copyDblockFromGAtoBuzzMatrix(PFock_t pfock)
     NGA_Release(pfock->ga_D[0], lo, hi);
 }
 
+void PFock_Buzz_getFockMat(
+	PFock_t pfock,
+	int rowstart, int rowend,
+	int colstart, int colend,
+	int stride,   double *mat
+)
+{
+	int nrows = rowend - rowstart + 1;
+	int ncols = colend - colstart + 1;
+	
+	Buzz_getBlock(
+		pfock->bm_Fmat, pfock->bm_Fmat->proc_cnt,
+		rowstart, nrows,
+		colstart, ncols,
+		mat, stride
+	);
+	Buzz_flushProcListGetRequests(pfock->bm_Fmat, pfock->bm_Fmat->proc_cnt);
+	
+	#ifndef __SCF__
+	double *K = (double*) PFOCK_MALLOC(nrows * ncols * sizeof(double));
+	assert(K != NULL);
+	Buzz_getBlock(
+		pfock->bm_Kmat, pfock->bm_Kmat->proc_cnt,
+		rowstart, nrows,
+		colstart, ncols,
+		K, ncols
+	);
+	Buzz_flushProcListGetRequests(pfock->bm_Fmat, pfock->bm_Fmat->proc_cnt);
+	for (int i = 0; i < nrows; i++)
+		#pragma vector
+		for (int j = 0; j < ncols; j++)
+			mat[i * stride + j] += K[i * ncols + j];
+	PFOCK_FREE(K);
+	#endif
+}
+
 PFockStatus_t PFock_computeFock(BasisSet_t basis, PFock_t pfock)
 {
 #ifdef GA_NB
@@ -1456,9 +1492,9 @@ PFockStatus_t PFock_computeFock(BasisSet_t basis, PFock_t pfock)
     
     for (int i = 0; i < pfock->num_dmat2; i++) 
     {
-        GA_Fill(pfock->ga_F[i], &dzero);
+        //GA_Fill(pfock->ga_F[i], &dzero);
     #ifndef __SCF__
-        GA_Fill(pfock->ga_K[i], &dzero);
+        //GA_Fill(pfock->ga_K[i], &dzero);
     #endif
         //GA_Fill(pfock->ga_F1[i], &dzero);
         //GA_Fill(pfock->ga_F2[i], &dzero);
@@ -1867,6 +1903,7 @@ PFockStatus_t PFock_computeFock(BasisSet_t basis, PFock_t pfock)
                (tv2.tv_usec - tv1.tv_usec) / 1000.0 / 1000.0;    
     GA_Sync();
     
+	MPI_Barrier(MPI_COMM_WORLD);
     gettimeofday (&tv3, NULL);
     store_local_bufF (pfock);
     gettimeofday (&tv4, NULL);
@@ -1892,6 +1929,7 @@ PFockStatus_t PFock_computeFock(BasisSet_t basis, PFock_t pfock)
         #endif
         }
     } else {
+		/*
         // correct F
         for (int i = 0; i < pfock->num_dmat; i++) {
             GA_Symmetrize(pfock->ga_F[i]);
@@ -1899,6 +1937,12 @@ PFockStatus_t PFock_computeFock(BasisSet_t basis, PFock_t pfock)
             GA_Symmetrize(pfock->ga_K[i]);
         #endif
         }
+		*/
+		
+		Buzz_symmetrizeBuzzMatrix(pfock->bm_Fmat);
+		#ifndef __SCF__
+		Buzz_symmetrizeBuzzMatrix(pfock->bm_Kmat);
+		#endif
     }
     
     Buzz_stopBuzzMatrixReadOnlyEpoch(pfock->bm_Dmat);

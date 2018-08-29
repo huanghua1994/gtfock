@@ -149,12 +149,23 @@ static void fock_build(PFock_t pfock, BasisSet_t basis,
     PFock_computeFock(basis, pfock);
     
     // get Fock matrix
+	MPI_Barrier(MPI_COMM_WORLD);
+	Buzz_startBuzzMatrixReadOnlyEpoch(pfock->bm_Fmat);
+	Buzz_startBuzzMatrixReadOnlyEpoch(pfock->bm_Kmat);
     if (1 == ispurif) 
 	{
+		/*
         PFock_getMat(pfock, PFOCK_MAT_TYPE_F, USE_D_ID,
                      rowstart, rowend, colstart, colend,
                      stride, F_block);
+		*/
+		PFock_Buzz_getFockMat(
+			pfock, rowstart, rowend,
+			colstart, colend, stride, F_block
+		);
     }
+	Buzz_stopBuzzMatrixReadOnlyEpoch(pfock->bm_Fmat);
+	Buzz_stopBuzzMatrixReadOnlyEpoch(pfock->bm_Kmat);
 }
 
 
