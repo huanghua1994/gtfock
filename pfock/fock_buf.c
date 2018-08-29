@@ -169,6 +169,11 @@ void store_local_bufF(PFock_t pfock)
         int ldF1 = pfock->ldX1;
         int ldF2 = pfock->ldX2;
         int ldF3 = pfock->ldX3;    
+
+        F1 = pfock->bm_F1->mat_block;
+        F2 = pfock->bm_F2->mat_block;
+        F3 = pfock->bm_F3->mat_block;
+
         // update F1
         double done = 1.0;
         lo[0] = pfock->sfunc_row;
