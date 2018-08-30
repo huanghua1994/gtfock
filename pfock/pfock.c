@@ -1411,7 +1411,7 @@ void PFock_Buzz_getFockMat(
 		colstart, ncols,
 		K, ncols
 	);
-	Buzz_flushProcListGetRequests(pfock->bm_Fmat, pfock->bm_Fmat->proc_cnt);
+	Buzz_flushProcListGetRequests(pfock->bm_Kmat, pfock->bm_Kmat->proc_cnt);
 	for (int i = 0; i < nrows; i++)
 		#pragma vector
 		for (int j = 0; j < ncols; j++)
