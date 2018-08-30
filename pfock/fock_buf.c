@@ -125,9 +125,10 @@ void load_local_bufD(PFock_t pfock)
     NGA_Get(pfock->ga_D[0], lo, hi, D_mat, &nbf);
     #endif
     */
-	
+	Buzz_startBuzzMatrixReadOnlyEpoch(pfock->bm_Dmat);
     Buzz_getBlock(pfock->bm_Dmat, pfock->bm_Dmat->proc_cnt, 0, nbf, 0, nbf, D_mat, nbf);
     Buzz_flushProcListGetRequests(pfock->bm_Dmat, pfock->bm_Dmat->proc_cnt);
+	Buzz_stopBuzzMatrixReadOnlyEpoch(pfock->bm_Dmat);
 }
 
 void store_local_bufF(PFock_t pfock)
