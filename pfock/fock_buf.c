@@ -16,270 +16,95 @@
 
 #include "Buzz_Matrix.h"
 
-void load_local_bufD(PFock_t pfock)
+void load_Global_D(PFock_t pfock)
 {
-    /*
-    int lo[2];
-    int hi[2];
-    int *loadrow = pfock->loadrow;
-    int *loadcol = pfock->loadcol;
-    int sizerow = pfock->sizeloadrow;
-    int sizecol = pfock->sizeloadcol;
-
-    int myrank;
-    MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
-    int ldD;    
-    lo[0] = myrank;
-    hi[0] = myrank;
-    lo[1] = 0;
-    for (int i = 0; i < pfock->num_dmat2; i++) {
-    #ifdef GA_NB
-        ga_nbhdl_t nbnb;
-    #endif
-        // load local buffers
-        double *D1;
-        double *D2;
-        double *D3;
-        hi[1] = pfock->sizeX1 - 1;
-        NGA_Access(pfock->ga_D1[i], lo, hi, &D1, &ldD);
-        hi[1] = pfock->sizeX2 - 1;
-        NGA_Access(pfock->ga_D2[i], lo, hi, &D2, &ldD);
-        hi[1] = pfock->sizeX3 - 1;
-        NGA_Access(pfock->ga_D3[i], lo, hi, &D3, &ldD);
-        int ldD1 = pfock->ldX1;
-        int ldD2 = pfock->ldX2;
-        int ldD3 = pfock->ldX3;     
-        // update D1
-        lo[0] = pfock->sfunc_row;
-        hi[0] = pfock->efunc_row;
-        for (int A = 0; A < sizerow; A++) {
-            lo[1] = loadrow[PLEN * A + P_LO];
-            hi[1] = loadrow[PLEN * A + P_HI];
-            int posrow = loadrow[PLEN * A + P_W];
-        #ifdef GA_NB
-            NGA_NbGet(pfock->ga_D[i], lo, hi, &(D1[posrow]), &ldD1, &nbnb);
-        #else
-            NGA_Get(pfock->ga_D[i], lo, hi, &(D1[posrow]), &ldD1);
-        #endif
-        }
-        // update D2
-        lo[0] = pfock->sfunc_col;
-        hi[0] = pfock->efunc_col;
-        for (int B = 0; B < sizecol; B++) {
-            lo[1] = loadcol[PLEN * B + P_LO];
-            hi[1] = loadcol[PLEN * B + P_HI];
-            int poscol = loadcol[PLEN * B + P_W];
-        #ifdef GA_NB    
-            NGA_NbGet(pfock->ga_D[i], lo, hi, &(D2[poscol]), &ldD2, &nbnb);
-        #else
-            NGA_Get(pfock->ga_D[i], lo, hi, &(D2[poscol]), &ldD2);
-        #endif
-        }
-        // update D3
-        for (int A = 0; A < sizerow; A++) {
-            lo[0] = loadrow[PLEN * A + P_LO];
-            hi[0] = loadrow[PLEN * A + P_HI];
-            int posrow = loadrow[PLEN * A + P_W];
-            for (int B = 0; B < sizecol; B++) {
-                lo[1] = loadcol[PLEN * B + P_LO];
-                hi[1] = loadcol[PLEN * B + P_HI];
-                int poscol = loadcol[PLEN * B + P_W];
-            #ifdef GA_NB
-                NGA_NbGet(pfock->ga_D[i], lo, hi,
-                          &(D3[posrow * ldD3 + poscol]), &ldD3, &nbnb);
-            #else
-                NGA_Get(pfock->ga_D[i], lo, hi,
-                        &(D3[posrow * ldD3 + poscol]), &ldD3);        
-            #endif
-            }
-        }
-    #ifdef GA_NB
-        NGA_NbWait (&nbnb);
-    #endif
-        // release update
-        lo[0] = myrank;
-        hi[0] = myrank;
-        lo[1] = 0;
-        hi[1] = pfock->sizeX1 - 1;
-        NGA_Release_update(pfock->ga_D1[i], lo, hi);
-        hi[1] = pfock->sizeX2 - 1;
-        NGA_Release_update(pfock->ga_D2[i], lo, hi);
-        hi[1] = pfock->sizeX3 - 1;
-        NGA_Release_update(pfock->ga_D3[i], lo, hi);
-    }
-    */
-    
-    // Load full density matrix, num_dmat2 should be 1
     int nbf = pfock->nbf;
     double *D_mat = pfock->D_mat;
-    /*
-    lo[0] = 0;
-    lo[1] = 0;
-    hi[0] = nbf - 1;
-    hi[1] = nbf - 1;
-    #ifdef GA_NB
-    ga_nbhdl_t nbnb;
-    NGA_NbGet(pfock->ga_D[0], lo, hi, D_mat, &nbf, &nbnb);
-    NGA_NbWait (&nbnb);
-    #else
-    NGA_Get(pfock->ga_D[0], lo, hi, D_mat, &nbf);
-    #endif
-    */
-	Buzz_startBuzzMatrixReadOnlyEpoch(pfock->bm_Dmat);
+    Buzz_startBuzzMatrixReadOnlyEpoch(pfock->bm_Dmat);
     Buzz_getBlock(pfock->bm_Dmat, pfock->bm_Dmat->proc_cnt, 0, nbf, 0, nbf, D_mat, nbf);
     Buzz_flushProcListGetRequests(pfock->bm_Dmat, pfock->bm_Dmat->proc_cnt);
-	Buzz_stopBuzzMatrixReadOnlyEpoch(pfock->bm_Dmat);
+    Buzz_stopBuzzMatrixReadOnlyEpoch(pfock->bm_Dmat);
 }
 
-void store_local_bufF(PFock_t pfock)
+void store_F1F2F3_to_Global_JK(PFock_t pfock)
 {
     int *loadrow = pfock->loadrow;
     int *loadcol = pfock->loadcol;
-    int sizerow = pfock->sizeloadrow;
-    int sizecol = pfock->sizeloadcol;
-    int myrank;
-    MPI_Comm_rank (MPI_COMM_WORLD, &myrank);
-    int lo[2];
-    int hi[2];
-    int ldF;
-	
-	Buzz_Matrix_t bm_J = pfock->bm_Fmat;
-	#ifdef __SCF__
-	Buzz_Matrix_t bm_K = pfock->bm_Fmat;
-	#else
-	Buzz_Matrix_t bm_K = pfock->bm_Kmat;
-	#endif
-	
-    int *ga_J = pfock->ga_F;
-#ifdef __SCF__
-    int *ga_K = pfock->ga_F;
-#else
-    int *ga_K = pfock->ga_K;
-#endif
-    lo[0] = myrank;
-    hi[0] = myrank;
-    lo[1] = 0;
-    for (int i = 0; i < pfock->num_dmat2; i++) {
-    #ifdef GA_NB    
-        ga_nbhdl_t nbnb;
+    int sizerow  = pfock->sizeloadrow;
+    int sizecol  = pfock->sizeloadcol;
+    int lo[2], hi[2], posrow, poscol;
+
+    int ldF1 = pfock->ldX1;
+    int ldF2 = pfock->ldX2;
+    int ldF3 = pfock->ldX3;
+    double *F1 = pfock->bm_F1->mat_block;
+    double *F2 = pfock->bm_F2->mat_block;
+    double *F3 = pfock->bm_F3->mat_block;
+    
+    Buzz_Matrix_t bm_J = pfock->bm_Fmat;
+    #ifdef __SCF__
+    Buzz_Matrix_t bm_K = pfock->bm_Fmat;
+    #else
+    Buzz_Matrix_t bm_K = pfock->bm_Kmat;
     #endif
-        // local buffers
-        double *F1;
-        double *F2;
-        double *F3;
-        hi[1] = pfock->sizeX1 - 1;
-        NGA_Access(pfock->ga_F1[i], lo, hi, &F1, &ldF);
-        lo[1] = 0;
-        hi[1] = pfock->sizeX2 - 1;
-        NGA_Access(pfock->ga_F2[i], lo, hi, &F2, &ldF);
-        lo[1] = 0;
-        hi[1] = pfock->sizeX3 - 1;
-        NGA_Access(pfock->ga_F3[i], lo, hi, &F3, &ldF);
-        int ldF1 = pfock->ldX1;
-        int ldF2 = pfock->ldX2;
-        int ldF3 = pfock->ldX3;    
-
-        F1 = pfock->bm_F1->mat_block;
-        F2 = pfock->bm_F2->mat_block;
-        F3 = pfock->bm_F3->mat_block;
-
-        // update F1
-        double done = 1.0;
-        lo[0] = pfock->sfunc_row;
-        hi[0] = pfock->efunc_row;
-        for (int A = 0; A < sizerow; A++) {
-            lo[1] = loadrow[PLEN * A + P_LO];
-            hi[1] = loadrow[PLEN * A + P_HI];
-            int posrow = loadrow[PLEN * A + P_W];
-			
-			Buzz_accumulateBlock(
-				bm_J, 
-				lo[0], hi[0] - lo[0] + 1,
-				lo[1], hi[1] - lo[1] + 1,
-				F1 + posrow, ldF1
-			);
-			/*
-        #ifdef GA_NB
-            NGA_NbAcc(ga_J[i], lo, hi, &(F1[posrow]),
-                      &ldF1, &done, &nbnb);    
-        #else
-            NGA_Acc(ga_J[i], lo, hi, &(F1[posrow]), &ldF1, &done);
-        #endif
-			*/
-        }
-
-        // update F2
-        lo[0] = pfock->sfunc_col;
-        hi[0] = pfock->efunc_col;
-        for (int B = 0; B < sizecol; B++) {
-            lo[1] = loadcol[PLEN * B + P_LO];
-            hi[1] = loadcol[PLEN * B + P_HI];
-            int poscol = loadcol[PLEN * B + P_W];
-			
-			Buzz_accumulateBlock(
-				bm_J, 
-				lo[0], hi[0] - lo[0] + 1,
-				lo[1], hi[1] - lo[1] + 1,
-				F2 + poscol, ldF2
-			);
-			/*
-        #ifdef GA_NB
-            NGA_NbAcc(ga_J[i], lo, hi, &(F2[poscol]),
-                      &ldF2, &done, &nbnb);
-        #else
-            NGA_Acc(ga_J[i], lo, hi, &(F2[poscol]), &ldF2, &done);
-        #endif
-			*/
-        }
-
-        // update F3
-        for (int A = 0; A < sizerow; A++) {
-            lo[0] = loadrow[PLEN * A + P_LO];
-            hi[0] = loadrow[PLEN * A + P_HI];
-            int posrow = loadrow[PLEN * A + P_W];
-            for (int B = 0; B < sizecol; B++) {
-                lo[1] = loadcol[PLEN * B + P_LO];
-                hi[1] = loadcol[PLEN * B + P_HI];
-                int poscol = loadcol[PLEN * B + P_W];
-				
-				Buzz_accumulateBlock(
-					bm_K, 
-					lo[0], hi[0] - lo[0] + 1,
-					lo[1], hi[1] - lo[1] + 1,
-					F3 + posrow * ldF3 + poscol, ldF3
-				);
-				
-				/*
-            #ifdef GA_NB
-                NGA_NbAcc(ga_K[i], lo, hi, 
-                          &(F3[posrow * ldF3 + poscol]), &ldF3, &done, &nbnb);
-            #else
-                NGA_Acc(ga_K[i], lo, hi, 
-                        &(F3[posrow * ldF3 + poscol]), &ldF3, &done);        
-            #endif
-				*/
-            }
-        }
-    #ifdef GA_NB
-        NGA_NbWait(&nbnb);
-    #endif
-        // update release
-        lo[0] = myrank;
-        hi[0] = myrank;
-        lo[1] = 0;
-        hi[1] = pfock->sizeX1 - 1;
-        NGA_Release(pfock->ga_F1[i], lo, hi);
-        lo[1] = 0;
-        hi[1] = pfock->sizeX2 - 1;
-        NGA_Release(pfock->ga_F2[i], lo, hi);
-        lo[1] = 0;
-        hi[1] = pfock->sizeX3 - 1;
-        NGA_Release(pfock->ga_F3[i], lo, hi);
+    
+    // Update F1
+    lo[0] = pfock->sfunc_row;
+    hi[0] = pfock->efunc_row;
+    for (int A = 0; A < sizerow; A++) 
+    {
+        lo[1]  = loadrow[PLEN * A + P_LO];
+        hi[1]  = loadrow[PLEN * A + P_HI];
+        posrow = loadrow[PLEN * A + P_W];
+        
+        Buzz_accumulateBlock(
+            bm_J, 
+            lo[0], hi[0] - lo[0] + 1,
+            lo[1], hi[1] - lo[1] + 1,
+            F1 + posrow, ldF1
+        );
     }
-    GA_Sync();
-	MPI_Barrier(MPI_COMM_WORLD);
+    
+    // Update F2
+    lo[0] = pfock->sfunc_col;
+    hi[0] = pfock->efunc_col;
+    for (int B = 0; B < sizecol; B++) 
+    {
+        lo[1]  = loadcol[PLEN * B + P_LO];
+        hi[1]  = loadcol[PLEN * B + P_HI];
+        poscol = loadcol[PLEN * B + P_W];
+        
+        Buzz_accumulateBlock(
+            bm_J, 
+            lo[0], hi[0] - lo[0] + 1,
+            lo[1], hi[1] - lo[1] + 1,
+            F2 + poscol, ldF2
+        );
+    }
+    
+    // Update F3
+    for (int A = 0; A < sizerow; A++) 
+    {
+        lo[0]  = loadrow[PLEN * A + P_LO];
+        hi[0]  = loadrow[PLEN * A + P_HI];
+        posrow = loadrow[PLEN * A + P_W];
+        for (int B = 0; B < sizecol; B++) 
+        {
+            lo[1]  = loadcol[PLEN * B + P_LO];
+            hi[1]  = loadcol[PLEN * B + P_HI];
+            poscol = loadcol[PLEN * B + P_W];
+            
+            Buzz_accumulateBlock(
+                bm_K, 
+                lo[0], hi[0] - lo[0] + 1,
+                lo[1], hi[1] - lo[1] + 1,
+                F3 + posrow * ldF3 + poscol, ldF3
+            );
+        }
+    }
+    
+    MPI_Barrier(MPI_COMM_WORLD);
 }
-
 
 void compute_FD_ptr(PFock_t pfock, int startM, int endM,
                     int *ptrrow, int *rowsize)

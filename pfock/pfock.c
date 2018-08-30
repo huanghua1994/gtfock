@@ -830,7 +830,7 @@ static void destroy_buffers (PFock_t pfock)
     Buzz_destroyBuzzMatrix(pfock->bm_F1);
     Buzz_destroyBuzzMatrix(pfock->bm_F2);
     Buzz_destroyBuzzMatrix(pfock->bm_F3);
-	if (pfock->getFockMatBuf != NULL) PFOCK_FREE(pfock->getFockMatBuf);
+    if (pfock->getFockMatBuf != NULL) PFOCK_FREE(pfock->getFockMatBuf);
 
     PFOCK_FREE(pfock->ga_D1);
     PFOCK_FREE(pfock->ga_D2);
@@ -1154,317 +1154,88 @@ PFockStatus_t PFock_setNumDenMat(int numdmat, PFock_t pfock)
     return PFOCK_STATUS_EXECUTION_FAILED;
 }
 
-
-PFockStatus_t PFock_putDenMat(int rowstart, int rowend,
-                              int colstart, int colend,
-                              int stride, double *dmat,
-                              int index, PFock_t pfock)
-{
-    int lo[2];
-    int hi[2];
-    int ld[1];
-
-    if (pfock->committed == 1) {
-        PFOCK_PRINTF (1, "Can't change density matrix"
-                      " after PFock_commitDenMats() is called.\n");
-        return PFOCK_STATUS_EXECUTION_FAILED;
-    }
-    if (index < 0 || index >= pfock->num_dmat) {
-        PFOCK_PRINTF (1, "Invalid index\n");
-        return PFOCK_STATUS_INVALID_VALUE;
-    }
-    
-    lo[0] = rowstart;
-    hi[0] = rowend;    
-    lo[1] = colstart;
-    hi[1] = colend;
-    ld[0] = stride;
-    
-    NGA_Put(pfock->ga_D[index], lo, hi, (void *)dmat, ld);
-    return PFOCK_STATUS_SUCCESS;
-}
-
-
-PFockStatus_t PFock_putDenMatGA(int ga, int index, PFock_t pfock)
-{
-    GA_Copy(ga, pfock->ga_D[index]);
-    return PFOCK_STATUS_SUCCESS;
-}
-
-
-PFockStatus_t PFock_fillDenMat(double value, int index,
-                               PFock_t pfock)
-{
-    if (pfock->committed == 1) {
-        PFOCK_PRINTF (1, "Can't change density matrix"
-                      " after PFock_commitDenMats() is called.\n");
-        return PFOCK_STATUS_EXECUTION_FAILED;
-    }
-    if (index < 0 || index >= pfock->num_dmat) {
-        PFOCK_PRINTF (1, "Invalid index\n");
-        return PFOCK_STATUS_INVALID_VALUE;
-    }
-    
-    GA_Fill(pfock->ga_D[index], &value);
-    return PFOCK_STATUS_SUCCESS;
-}
-
-
-PFockStatus_t PFock_commitDenMats(PFock_t pfock)
-{
-    GA_Sync();
-    pfock->committed = 1;
-    if (pfock->nosymm == 1) {
-        for (int i = 0; i < pfock->num_dmat; i++) {
-            GA_Transpose(pfock->ga_D[i], pfock->ga_D[i + pfock->num_dmat]);
-        }
-    }
-
-    return PFOCK_STATUS_SUCCESS;
-}
-
-
-PFockStatus_t PFock_sync(PFock_t pfock)
-{
-    GA_Sync();
-    return PFOCK_STATUS_SUCCESS;
-}
-
-
-PFockStatus_t PFock_getMat(PFock_t pfock, PFockMatType_t type,
-                           int index,
-                           int rowstart, int rowend,
-                           int colstart, int colend,
-                           int stride, double *mat)
-{
-    int lo[2];
-    int hi[2];
-    int ld[1];
-    int *ga;
-    if (index < 0 || index >= pfock->max_numdmat) {
-        PFOCK_PRINTF (1, "Invalid index\n");
-        return PFOCK_STATUS_INVALID_VALUE;
-    }
-#ifdef _SCF_
-    if (PFOCK_MAT_TYPE_J == type || PFOCK_MAT_TYPE_K == type) {
-        PFOCK_PRINTF (1, "Invalid matrix type\n");
-        return PFOCK_STATUS_INVALID_VALUE;
-    }
-#endif    
-
-    lo[0] = rowstart;
-    hi[0] = rowend;    
-    lo[1] = colstart;
-    hi[1] = colend;
-    ld[0] = stride;
-    
-    ga = pfock->gatable[type];
-    NGA_Get(ga[index], lo, hi, mat, ld);
-
-#ifndef __SCF__
-    if (PFOCK_MAT_TYPE_F == type) {
-        int sizerow = rowend - rowstart + 1;
-        int sizecol = colend - colstart + 1;
-        double *K = (double *)PFOCK_MALLOC(sizerow * sizecol * sizeof(double));
-        if (NULL == K) {
-            PFOCK_PRINTF(1, "Failed to allocate memory: %lld\n",
-                sizerow * sizecol * sizeof(double));
-            return PFOCK_STATUS_ALLOC_FAILED;
-        }
-        int ga_K = pfock->ga_K[index];
-        NGA_Get(ga_K, lo, hi, K, &stride);
-        #pragma omp parallel for
-        for (int i = 0; i < sizerow; i++) {
-            #pragma simd
-            for (int j = 0; j < sizecol; j++) {
-                mat[i * stride + j] += K[i * sizecol + j];
-            }
-        }
-        PFOCK_FREE(K);
-    }    
-#endif
-
-    return PFOCK_STATUS_SUCCESS;    
-}
-
-
-PFockStatus_t PFock_getMatGA(PFock_t pfock, PFockMatType_t type,
-                             int index, int ga)
-{
-    int *my_ga = pfock->gatable[type];
-    GA_Copy(my_ga[index], ga);
-    
- #ifndef __SCF__
-    if (PFOCK_MAT_TYPE_F == type) {
-        int ga_K = pfock->ga_K[index];
-        double fone = 1.0;
-        double fzero = 0.0;
-        GA_Add(&fone, ga_K, &fzero, ga, ga);
-    }    
-#endif
-
-    return PFOCK_STATUS_SUCCESS;
-}
-
-
-PFockStatus_t PFock_getLocalMatInds(PFock_t pfock,
-                                    int *rowstart, int *rowend,
-                                    int *colstart, int *colend)
-{
-    int lo[2];
-    int hi[2];
-    int myrank;  
-    MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
-    NGA_Distribution(pfock->ga_D[0], myrank, lo, hi);
-    *rowstart = lo[0];
-    *rowend = hi[0];
-    *colstart = lo[1];
-    *colend = hi[1];
-
-    return PFOCK_STATUS_SUCCESS;
-}
-
-
-PFockStatus_t PFock_getLocalMatPtr(PFock_t pfock,
-                                   PFockMatType_t type, int index,
-                                   int *rowstart, int *rowend,
-                                   int *colstart, int *colend,
-                                   int *stride, double **mat)
-{
-    int lo[2];
-    int hi[2];
-    int myrank;
-    int *ga;
-
-    if (index < 0 || index >= pfock->max_numdmat)
-    {
-        PFOCK_PRINTF (1, "Invalid index\n");
-        return PFOCK_STATUS_INVALID_VALUE;
-    }
-    
-    ga = pfock->gatable[type];
-    MPI_Comm_rank (MPI_COMM_WORLD, &myrank);
-    NGA_Distribution (ga[index], myrank, lo, hi);
-    NGA_Access (ga[index], lo, hi, mat, stride);
-    *rowstart = lo[0];
-    *rowend = hi[0];
-    *colstart = lo[1];
-    *colend = hi[1];
-    
-    return PFOCK_STATUS_SUCCESS;  
-}
-
-
-PFockStatus_t PFock_getMatGAHandle(PFock_t pfock,
-                                   PFockMatType_t type, int index,
-                                   int *ga)
-{
-    if (index < 0 || index >= pfock->max_numdmat)
-    {
-        PFOCK_PRINTF (1, "Invalid index\n");
-        return PFOCK_STATUS_INVALID_VALUE;
-    }
-    
-    int *g = pfock->gatable[type];
-    *ga = g[index];
-    return PFOCK_STATUS_SUCCESS;
-}
-
 void PFock_Buzz_getFockMat(
-	PFock_t pfock,
-	int rowstart, int rowend,
-	int colstart, int colend,
-	int stride,   double *mat
+    PFock_t pfock,
+    int rowstart, int rowend,
+    int colstart, int colend,
+    int stride,   double *mat
 )
 {
-	int nrows = rowend - rowstart + 1;
-	int ncols = colend - colstart + 1;
-	
-	Buzz_getBlock(
-		pfock->bm_Fmat, pfock->bm_Fmat->proc_cnt,
-		rowstart, nrows,
-		colstart, ncols,
-		mat, stride
-	);
-	Buzz_flushProcListGetRequests(pfock->bm_Fmat, pfock->bm_Fmat->proc_cnt);
-	
-	#ifndef __SCF__
-	if (nrows * ncols > pfock->getFockMatBufSize)
-	{
-		if (pfock->getFockMatBuf != NULL) PFOCK_FREE(pfock->getFockMatBuf);
-		pfock->getFockMatBufSize = pfock->getFockMatBufSize;
-		pfock->getFockMatBuf     = (double*) PFOCK_MALLOC(nrows * ncols * sizeof(double));
-		assert(pfock->getFockMatBuf != NULL);
-	}
-	double *K = pfock->getFockMatBuf;
-	Buzz_getBlock(
-		pfock->bm_Kmat, pfock->bm_Kmat->proc_cnt,
-		rowstart, nrows,
-		colstart, ncols,
-		K, ncols
-	);
-	Buzz_flushProcListGetRequests(pfock->bm_Kmat, pfock->bm_Kmat->proc_cnt);
-	for (int i = 0; i < nrows; i++)
-		#pragma vector
-		for (int j = 0; j < ncols; j++)
-			mat[i * stride + j] += K[i * ncols + j];
-	#endif
+    int nrows = rowend - rowstart + 1;
+    int ncols = colend - colstart + 1;
+    
+    Buzz_getBlock(
+        pfock->bm_Fmat, pfock->bm_Fmat->proc_cnt,
+        rowstart, nrows,
+        colstart, ncols,
+        mat, stride
+    );
+    Buzz_flushProcListGetRequests(pfock->bm_Fmat, pfock->bm_Fmat->proc_cnt);
+    
+    #ifndef __SCF__
+    if (nrows * ncols > pfock->getFockMatBufSize)
+    {
+        if (pfock->getFockMatBuf != NULL) PFOCK_FREE(pfock->getFockMatBuf);
+        pfock->getFockMatBufSize = pfock->getFockMatBufSize;
+        pfock->getFockMatBuf     = (double*) PFOCK_MALLOC(nrows * ncols * sizeof(double));
+        assert(pfock->getFockMatBuf != NULL);
+    }
+    double *K = pfock->getFockMatBuf;
+    Buzz_getBlock(
+        pfock->bm_Kmat, pfock->bm_Kmat->proc_cnt,
+        rowstart, nrows,
+        colstart, ncols,
+        K, ncols
+    );
+    Buzz_flushProcListGetRequests(pfock->bm_Kmat, pfock->bm_Kmat->proc_cnt);
+    for (int i = 0; i < nrows; i++)
+        #pragma vector
+        for (int j = 0; j < ncols; j++)
+            mat[i * stride + j] += K[i * ncols + j];
+    #endif
 }
 
 PFockStatus_t PFock_computeFock(BasisSet_t basis, PFock_t pfock)
 {
-	/*
-#ifdef GA_NB
-    ga_nbhdl_t nbhdlF1;
-    ga_nbhdl_t nbhdlF2;
-    ga_nbhdl_t nbhdlF3;
-#endif
-	*/
-	
     struct timeval tv1;
     struct timeval tv2;
     struct timeval tv3;
     struct timeval tv4; 
     int myrank;
     MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
-    pfock->committed = 0;      
-    pfock->timepass = 0.0;
-    pfock->timereduce = 0.0;
-    pfock->timeinit = 0.0;
-    pfock->timecomp = 0.0;
-    pfock->timegather = 0.0;
-    pfock->timescatter = 0.0;
-    pfock->usq = 0.0;
-    pfock->uitl = 0.0;
-    pfock->steals = 0.0;
-    pfock->stealfrom = 0.0;
-    pfock->ngacalls = 0.0;
-    pfock->volumega = 0.0;
+    pfock->committed    = 0;      
+    pfock->timepass     = 0.0;
+    pfock->timereduce   = 0.0;
+    pfock->timeinit     = 0.0;
+    pfock->timecomp     = 0.0;
+    pfock->timegather   = 0.0;
+    pfock->timescatter  = 0.0;
     pfock->timenexttask = 0.0;
+    pfock->usq  = 0.0;
+    pfock->uitl = 0.0;
+    pfock->steals    = 0.0;
+    pfock->stealfrom = 0.0;
+    pfock->ngacalls  = 0.0;
+    pfock->volumega  = 0.0;
     int my_sshellrow = pfock->sshell_row;
     int my_sshellcol = pfock->sshell_col;
-    int myrow = myrank/pfock->npcol;
-    int mycol = myrank%pfock->npcol;
+    int myrow  = myrank/pfock->npcol;
+    int mycol  = myrank%pfock->npcol;
     int sizeX1 = pfock->sizeX1;
     int sizeX2 = pfock->sizeX2;
     int sizeX3 = pfock->sizeX3;
     int sizeX4 = pfock->sizeX4;    
     int sizeX5 = pfock->sizeX5;
     int sizeX6 = pfock->sizeX6;
-	/*
-    double *D1[pfock->num_dmat2];
-    double *D2[pfock->num_dmat2];
-    double *D3[pfock->num_dmat2];
-	*/
     double *F1 = pfock->F1;
     double *F2 = pfock->F2;
     double *F3 = pfock->F3;
     double *F4 = pfock->F4;
     double *F5 = pfock->F5;
     double *F6 = pfock->F6;
-    int maxrowsize = pfock->maxrowsize;
+    int maxrowsize  = pfock->maxrowsize;
     int maxcolfuncs = pfock->maxcolfuncs;
-    int maxcolsize = pfock->maxcolsize;
+    int maxcolsize  = pfock->maxcolsize;
     int ldX1 = maxrowsize;
     int ldX2 = maxcolsize;
     int ldX3 = maxcolsize;
@@ -1472,64 +1243,31 @@ PFockStatus_t PFock_computeFock(BasisSet_t basis, PFock_t pfock)
     int ldX5 = maxcolsize;
     int ldX6 = maxcolfuncs;
     double dzero = 0.0;
-	/*
-    double done = 1.0;
-    int lo[2];
-    int hi[2];
-	*/
     
+    // Initialize buffers used in fock_task()
     init_block_buf(pfock->nbf, pfock->nshells, pfock->f_startind, pfock->num_dmat, basis, maxcolfuncs);
 
     double *D_mat = pfock->D_mat;
 
     gettimeofday (&tv1, NULL);    
     gettimeofday (&tv3, NULL);
-	
-    /*
-    for (int i = 0; i < pfock->num_dmat2; i++) 
-    {
-        GA_Fill(pfock->ga_F[i], &dzero);
-    #ifndef __SCF__
-        GA_Fill(pfock->ga_K[i], &dzero);
-    #endif
-        GA_Fill(pfock->ga_F1[i], &dzero);
-        GA_Fill(pfock->ga_F2[i], &dzero);
-        GA_Fill(pfock->ga_F3[i], &dzero);
-    }
-	*/
     
+    // Reset local Fock buf and global J, K matrix
     Buzz_fillBuzzMatrix(pfock->bm_Fmat, &dzero);
+    #ifndef __SCF__
     Buzz_fillBuzzMatrix(pfock->bm_Kmat, &dzero);
+    #endif
     Buzz_fillBuzzMatrix(pfock->bm_F1, &dzero);
     Buzz_fillBuzzMatrix(pfock->bm_F2, &dzero);
     Buzz_fillBuzzMatrix(pfock->bm_F3, &dzero);
     MPI_Barrier(MPI_COMM_WORLD);
 
     // Load full D
-    load_local_bufD(pfock);
-	
-	/*
-    lo[0] = myrank;
-    hi[0] = myrank;
-    lo[1] = 0;
-    for (int i = 0; i < pfock->num_dmat2; i++) 
-    {
-        int ldD;
-        hi[1] = sizeX1 - 1;
-        NGA_Access(pfock->ga_D1[i], lo, hi, &D1[i], &ldD);
-        hi[1] = sizeX2 - 1;
-        NGA_Access(pfock->ga_D2[i], lo, hi, &D2[i], &ldD);
-        hi[1] = sizeX3 - 1;
-        NGA_Access(pfock->ga_D3[i], lo, hi, &D3[i], &ldD);
-    }
-	*/
+    load_Global_D(pfock);
+    
     gettimeofday(&tv4, NULL);
     pfock->timegather += (tv4.tv_sec - tv3.tv_sec) +
         (tv4.tv_usec - tv3.tv_usec) / 1000.0 / 1000.0;
-	/*
-    pfock->ngacalls += 3;
-    pfock->volumega += (sizeX1 + sizeX2 + sizeX3) * sizeof(double);
-	*/
     
     gettimeofday (&tv3, NULL);   
     reset_F(pfock->numF, pfock->num_dmat2, F1, F2, F3, F4, F5, F6,
@@ -1538,14 +1276,14 @@ PFockStatus_t PFock_computeFock(BasisSet_t basis, PFock_t pfock)
     pfock->timeinit += (tv4.tv_sec - tv3.tv_sec) +
         (tv4.tv_usec - tv3.tv_usec) / 1000.0 / 1000.0;
     
-    /* own part */
+    // Own part
     reset_taskq(pfock);
     int task;
     int repack_D = 1;
     while ((task = taskq_next (pfock, myrow, mycol, 1)) < pfock->ntasks) 
     {
-        int rowid  = task/pfock->nblks_col;
-        int colid  = task%pfock->nblks_col;
+        int rowid  = task / pfock->nblks_col;
+        int colid  = task % pfock->nblks_col;
         int startM = pfock->blkrowptr_sh[pfock->sblk_row + rowid];
         int endM   = pfock->blkrowptr_sh[pfock->sblk_row + rowid + 1] - 1;
         int startP = pfock->blkcolptr_sh[pfock->sblk_col + colid];
@@ -1571,10 +1309,11 @@ PFockStatus_t PFock_computeFock(BasisSet_t basis, PFock_t pfock)
         repack_D = 0;
         pfock->timecomp += (tv4.tv_sec - tv3.tv_sec) +
                     (tv4.tv_usec - tv3.tv_usec) / 1000.0 / 1000.0;
-    } /* own part */
+    }  // Own part
 
-    gettimeofday (&tv3, NULL);        
-    // reduction on CPU
+    gettimeofday (&tv3, NULL);
+    
+    // Reduction of F1, F2, F3 on CPU
     reduce_F(pfock->numF, pfock->num_dmat2, F1, F2, F3, F4, F5, F6,
              sizeX1, sizeX2, sizeX3,
              sizeX4, sizeX5, sizeX6,
@@ -1582,66 +1321,28 @@ PFockStatus_t PFock_computeFock(BasisSet_t basis, PFock_t pfock)
              pfock->nfuncs_row, pfock->nfuncs_col,
              pfock->rowpos[my_sshellrow],
              pfock->colpos[my_sshellcol],
-             ldX3, ldX4, ldX5, ldX6);   
-	/*
-    lo[0] = myrank;
-    hi[0] = myrank;
-    lo[1] = 0;
-    for (int i = 0; i < pfock->num_dmat2; i++) 
-    {
-        hi[1] = sizeX1 - 1;
-#ifdef GA_NB
-        // save results for local intergrals
-        NGA_NbAcc(pfock->ga_F1[i], lo, hi, &F1[i * sizeX1],
-                  &sizeX1, &done, &nbhdlF1);
-        hi[1] = sizeX2 - 1;
-        NGA_NbAcc(pfock->ga_F2[i], lo, hi, &F2[i * sizeX2],
-                  &sizeX2, &done, &nbhdlF2); 
-        hi[1] = sizeX3 - 1;
-        NGA_NbAcc(pfock->ga_F3[i], lo, hi, &F3[i * sizeX3],
-                  &sizeX3, &done, &nbhdlF3); 
-#else
-        // save results for local intergrals
-        NGA_Acc(pfock->ga_F1[i], lo, hi, &F1[i * sizeX1], &sizeX1, &done);
-        hi[1] = sizeX2 - 1;
-        NGA_Acc(pfock->ga_F2[i], lo, hi, &F2[i * sizeX2], &sizeX2, &done); 
-        hi[1] = sizeX3 - 1;
-        NGA_Acc(pfock->ga_F3[i], lo, hi, &F3[i * sizeX3], &sizeX3, &done);
-#endif
-    }
-    pfock->ngacalls += 3;
-    pfock->volumega += (sizeX1 + sizeX2 + sizeX3) * sizeof(double);
-    */
+             ldX3, ldX4, ldX5, ldX6);
+             
+    // Accumulate F1, F2, F3 to local buffer, ready to accumulate to global J, K
     Buzz_accumulateBlock(pfock->bm_F1, myrank, 1, 0, sizeX1, F1, sizeX1);
     Buzz_accumulateBlock(pfock->bm_F2, myrank, 1, 0, sizeX2, F2, sizeX2);
     Buzz_accumulateBlock(pfock->bm_F3, myrank, 1, 0, sizeX3, F3, sizeX3);
-	
+    
     gettimeofday (&tv4, NULL);
     pfock->timereduce += (tv4.tv_sec - tv3.tv_sec) +
         (tv4.tv_usec - tv3.tv_usec) / 1000.0 / 1000.0;
 
-    // to steal
+    // To steal tasks
     pfock->steals = 0;
     pfock->stealfrom = 0;
 #ifdef __DYNAMIC__
-#ifdef GA_NB
-    //ga_nbhdl_t nbhdlD1;
-    //ga_nbhdl_t nbhdlD2;
-    //ga_nbhdl_t nbhdlD3;
-#endif
-    //double **D1_task;
-    //double **D2_task;
-    //double **VD1 = pfock->D1;
-    //double **VD2 = pfock->D2;
-    //double **VD3 = pfock->D3;
     int prevrow = myrow;
     int prevcol = mycol;   
-    /* steal tasks */
     for (int idx = 0; idx < pfock->nprocs - 1; idx++) 
     {
         int vpid = (myrank + idx + 1)%pfock->nprocs;
-        int vrow = vpid/pfock->npcol;
-        int vcol = vpid%pfock->npcol;
+        int vrow = vpid / pfock->npcol;
+        int vcol = vpid % pfock->npcol;
         int vsblk_row   = pfock->rowptr_blk[vrow];
         int vsblk_col   = pfock->colptr_blk[vcol];
         int vnblks_col  = pfock->colptr_blk[vcol + 1] - vsblk_col;       
@@ -1656,83 +1357,10 @@ PFockStatus_t PFock_computeFock(BasisSet_t basis, PFock_t pfock)
             gettimeofday (&tv3, NULL);
             if (0 == stealed) 
             {
-                /*
-                if (vrow != prevrow && vrow != myrow) {
-                    D1_task = VD1;
-                    lo[0] = vpid;
-                    hi[0] = vpid;
-                    lo[1] = 0;
-                    hi[1] = sizeX1 - 1;
-                    for (int i = 0; i < pfock->num_dmat2; i++) {
-                    #ifdef GA_NB    
-                        NGA_NbGet(pfock->ga_D1[i], lo, hi,
-                                  VD1[i], &sizeX1, &nbhdlD1);
-                    #else
-                        NGA_Get(pfock->ga_D1[i], lo, hi,  VD1[i], &sizeX1);
-                    #endif
-                        pfock->ngacalls += 1;
-                        pfock->volumega += sizeX1 * sizeof(double);
-                    }                 
-                } else if (vrow == myrow) {
-                    D1_task = D1;
-                }  
-                if (vcol != prevcol && vcol != mycol) {
-                    D2_task =  VD2;
-                    lo[0] = vpid;
-                    hi[0] = vpid;
-                    lo[1] = 0;
-                    hi[1] = sizeX2 - 1;
-                    for (int i = 0; i < pfock->num_dmat2; i++) {
-                    #ifdef GA_NB
-                        NGA_NbGet(pfock->ga_D2[i], lo, hi,
-                                  VD2[i], &sizeX2, &nbhdlD2);
-                    #else
-                        NGA_Get(pfock->ga_D2[i], lo, hi, VD2[i], &sizeX2);               
-                    #endif
-                        pfock->ngacalls += 1;
-                        pfock->volumega += sizeX2 * sizeof(double);
-                    }                  
-                } else if (vcol == mycol) {
-                    D2_task = D2;
-                }
-                lo[0] = vpid;
-                hi[0] = vpid;
-                lo[1] = 0;
-                hi[1] = sizeX3 - 1;
-                for (int i = 0; i < pfock->num_dmat2; i++) {
-                #ifdef GA_NB
-                    NGA_NbGet(pfock->ga_D3[i], lo, hi, 
-                              VD3[i], &sizeX3, &nbhdlD3);
-                #else
-                    NGA_Get(pfock->ga_D3[i], lo, hi,  VD3[i], &sizeX3);
-                #endif
-                    pfock->ngacalls += 1;
-                    pfock->volumega += sizeX3 * sizeof(double);
-                }
-                */
-                /*
-            #ifdef GA_NB    
-                // wait for last NbAcc F
-                NGA_NbWait(&nbhdlF1);
-                NGA_NbWait(&nbhdlF2);
-                NGA_NbWait(&nbhdlF3);
-            #endif
-                */
-                // init F bufs
+                // Reset F buffers as zero
                 reset_F(pfock->numF, pfock->num_dmat2, F1, F2, F3, F4, F5, F6,
                         sizeX1, sizeX2, sizeX3, sizeX4, sizeX5, sizeX6);
-            #ifdef GA_NB    
-                /*
-                // wait for NbGet
-                if (vrow != prevrow && vrow != myrow) {
-                    NGA_NbWait(&nbhdlD1);
-                }
-                if (vcol != prevcol && vcol != mycol) {
-                    NGA_NbWait(&nbhdlD2);
-                }
-                NGA_NbWait(&nbhdlD3);
-                */
-            #endif    
+                        
                 pfock->stealfrom++;
             }
             gettimeofday (&tv4, NULL);
@@ -1740,7 +1368,8 @@ PFockStatus_t PFock_computeFock(BasisSet_t basis, PFock_t pfock)
                    (tv4.tv_usec - tv3.tv_usec) / 1000.0 / 1000.0;
             int rowid  = task/vnblks_col;
             int colid  = task%vnblks_col;
-            // compute task
+            
+            // Compute stolen task
             int startM = pfock->blkrowptr_sh[vsblk_row + rowid];
             int endM   = pfock->blkrowptr_sh[vsblk_row + rowid + 1] - 1;
             int startP = pfock->blkcolptr_sh[vsblk_col + colid];
@@ -1770,7 +1399,7 @@ PFockStatus_t PFock_computeFock(BasisSet_t basis, PFock_t pfock)
         gettimeofday (&tv3, NULL);
         if (1 == stealed) 
         {
-            // reduction
+            // Reduction of F1, F2, F3 on CPU
             reduce_F(pfock->numF, pfock->num_dmat2, F1, F2, F3, F4, F5, F6,
                      sizeX1, sizeX2, sizeX3,
                      sizeX4, sizeX5, sizeX6,
@@ -1779,140 +1408,41 @@ PFockStatus_t PFock_computeFock(BasisSet_t basis, PFock_t pfock)
                      pfock->rowpos[vsshellrow],
                      pfock->colpos[vsshellcol],
                      ldX3, ldX4, ldX5, ldX6);
-			/*
-            lo[1] = 0;
-            hi[1] = sizeX1 - 1;
-			*/
+
+            // Accumulate F1, F2, F3 to local/remote buffer
             if (vrow != myrow) 
             {
-                /*
-                lo[0] = vpid;
-                hi[0] = vpid;
-                for (int i = 0; i < pfock->num_dmat2; i++) {
-                #ifdef GA_NB
-                    NGA_NbAcc(pfock->ga_F1[i], lo, hi,
-                              &F1[i * sizeX1], &sizeX1, &done, &nbhdlF1);
-                #else
-                    NGA_Acc(pfock->ga_F1[i], lo, hi,
-                            &F1[i * sizeX1], &sizeX1, &done);
-                #endif
-                    pfock->ngacalls += 1;
-                    pfock->volumega += sizeX1 * sizeof(double);
-                }
-                */
                 Buzz_accumulateBlock(pfock->bm_F1, vpid, 1, 0, sizeX1, F1, sizeX1);
             } else {
-                /*
-                lo[0] = myrank;
-                hi[0] = myrank;
-                for (int i = 0; i < pfock->num_dmat2; i++) {
-                #ifdef GA_NB    
-                    NGA_NbAcc(pfock->ga_F1[i], lo, hi,
-                              &F1[i * sizeX1], &sizeX1, &done, &nbhdlF1);
-                #else
-                    NGA_Acc(pfock->ga_F1[i], lo, hi,
-                            &F1[i * sizeX1], &sizeX1, &done);
-                #endif             
-                }
-                */
                 Buzz_accumulateBlock(pfock->bm_F1, myrank, 1, 0, sizeX1, F1, sizeX1);
             }
-			/*
-            lo[1] = 0;
-            hi[1] = sizeX2 - 1;
-			*/
+
             if (vcol != mycol) 
             {
-                /*
-                lo[0] = vpid;
-                hi[0] = vpid;
-                for (int i = 0; i < pfock->num_dmat2; i++) {
-                #ifdef GA_NB    
-                    NGA_NbAcc(pfock->ga_F2[i], lo, hi,
-                              &F2[i * sizeX2], &sizeX2, &done, &nbhdlF2);
-                #else
-                    NGA_Acc(pfock->ga_F2[i], lo, hi,
-                            &F2[i * sizeX2], &sizeX2, &done);
-                #endif
-                    pfock->ngacalls += 1;
-                    pfock->volumega += sizeX2 * sizeof(double);
-                }
-                */
                 Buzz_accumulateBlock(pfock->bm_F2, vpid, 1, 0, sizeX2, F2, sizeX2);
             } else {
-                /*
-                lo[0] = myrank;
-                hi[0] = myrank;
-                for (int i = 0; i < pfock->num_dmat2; i++) {
-                #ifdef GA_NB
-                    NGA_NbAcc(pfock->ga_F2[i], lo, hi,
-                              &F2[i * sizeX2], &sizeX2, &done, &nbhdlF2);
-                #else
-                    NGA_Acc(pfock->ga_F2[i], lo, hi,
-                            &F2[i * sizeX2], &sizeX2, &done);
-                #endif
-                }
-                */
                 Buzz_accumulateBlock(pfock->bm_F2, myrank, 1, 0, sizeX2, F2, sizeX2);
             }
-			/*
-            lo[0] = vpid;
-            hi[0] = vpid;
-            lo[1] = 0;
-            hi[1] = sizeX3 - 1;
-            for (int i = 0; i < pfock->num_dmat2; i++) 
-            {
-            #ifdef GA_NB
-                NGA_NbAcc(pfock->ga_F3[i], lo, hi,
-                          &F3[i * sizeX3], &sizeX3, &done, &nbhdlF3);
-            #else
-                NGA_Acc(pfock->ga_F3[i], lo, hi,
-                        &F3[i * sizeX3], &sizeX3, &done);
-            #endif
-                pfock->ngacalls += 1;
-                pfock->volumega += sizeX3 * sizeof(double);
-            }
-            */
+
             Buzz_accumulateBlock(pfock->bm_F3, vpid, 1, 0, sizeX3, F3, sizeX3);
+            
             prevrow = vrow;
             prevcol = vcol;
         }
         gettimeofday (&tv4, NULL);
         pfock->timereduce += (tv4.tv_sec - tv3.tv_sec) +
                         (tv4.tv_usec - tv3.tv_usec) / 1000.0 / 1000.0;
-    } /* steal tasks */    
+    }  // Steal tasks
 #endif /* #ifdef __DYNAMIC__ */
-
-    /*
-#ifdef GA_NB
-    // wait for last NbAcc F
-    NGA_NbWait (&nbhdlF1);
-    NGA_NbWait (&nbhdlF2);
-    NGA_NbWait (&nbhdlF3);
-#endif
-
-    lo[0] = myrank;
-    hi[0] = myrank;
-    lo[1] = 0;
-    for (int i = 0; i < pfock->num_dmat2; i++) 
-	{
-        hi[1] = sizeX1 - 1;
-        NGA_Release(pfock->ga_D1[i], lo, hi);
-        hi[1] = sizeX2 - 1;
-        NGA_Release(pfock->ga_D2[i], lo, hi);
-        hi[1] = sizeX3 - 1;
-        NGA_Release(pfock->ga_D3[i], lo, hi);
-    }
-	*/
     
     gettimeofday (&tv2, NULL);
     pfock->timepass = (tv2.tv_sec - tv1.tv_sec) +
                (tv2.tv_usec - tv1.tv_usec) / 1000.0 / 1000.0;    
     
-	//GA_Sync();
-	MPI_Barrier(MPI_COMM_WORLD);
+    //GA_Sync();
+    MPI_Barrier(MPI_COMM_WORLD);
     gettimeofday (&tv3, NULL);
-    store_local_bufF (pfock);
+    store_F1F2F3_to_Global_JK(pfock);
     gettimeofday (&tv4, NULL);
     pfock->timescatter = (tv4.tv_sec - tv3.tv_sec) +
                (tv4.tv_usec - tv3.tv_usec) / 1000.0 / 1000.0;
@@ -1920,12 +1450,12 @@ PFockStatus_t PFock_computeFock(BasisSet_t basis, PFock_t pfock)
     if (myrank == 0) PFOCK_INFO ("correct F ...\n");
   
     if (pfock->nosymm) 
-	{
-		// Buzz_Matrix cannot handle this yet...
-		/*
+    {
+        // Buzz_Matrix cannot handle this yet...
+        /*
         double dhalf = 0.5;
         for (int i = 0; i < pfock->num_dmat; i++) 
-		{
+        {
             GA_Transpose(pfock->ga_F[i + pfock->num_dmat],
                          pfock->ga_D[0]);
             GA_Add(&dhalf, pfock->ga_F[i],
@@ -1937,22 +1467,12 @@ PFockStatus_t PFock_computeFock(BasisSet_t basis, PFock_t pfock)
                    &dhalf, pfock->ga_D[0], pfock->ga_K[i]);
         #endif
         }
-		*/
+        */
     } else {
-		/*
-        // correct F
-        for (int i = 0; i < pfock->num_dmat; i++) {
-            GA_Symmetrize(pfock->ga_F[i]);
+        Buzz_symmetrizeBuzzMatrix(pfock->bm_Fmat);
         #ifndef __SCF__
-            GA_Symmetrize(pfock->ga_K[i]);
+        Buzz_symmetrizeBuzzMatrix(pfock->bm_Kmat);
         #endif
-        }
-		*/
-		
-		Buzz_symmetrizeBuzzMatrix(pfock->bm_Fmat);
-		#ifndef __SCF__
-		Buzz_symmetrizeBuzzMatrix(pfock->bm_Kmat);
-		#endif
     }
 
     return PFOCK_STATUS_SUCCESS;

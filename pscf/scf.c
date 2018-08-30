@@ -44,58 +44,53 @@ static void initial_guess(PFock_t pfock, BasisSet_t basis, int ispurif,
     int myrank;
     MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
 
-	double d_zero = 0.0;
+    double d_zero = 0.0;
     PFock_fillDenMat(0.0, USE_D_ID, pfock);
-	Buzz_fillBuzzMatrix(pfock->bm_Dmat, &d_zero);
+    Buzz_fillBuzzMatrix(pfock->bm_Dmat, &d_zero);
     
-	int nbf = pfock->nbf;
-	
+    int nbf = pfock->nbf;
+    
     // load initial guess, only process 0
     double R = 1.0;
     if (myrank == 0) 
-	{
+    {
         int num_atoms = CInt_getNumAtoms(basis);
         int N_neutral = CInt_getNneutral(basis); 
         int Q = CInt_getTotalCharge(basis);
         if (Q != 0 && N_neutral != 0) 
             R = (N_neutral - Q) / (double)N_neutral;
         
-		memset(pfock->D_mat, 0, sizeof(double) * nbf * nbf);
+        memset(pfock->D_mat, 0, sizeof(double) * nbf * nbf);
         for (int i = 0; i < num_atoms; i++) 
-		{
+        {
             double *guess;
             int spos;
             int epos;
             CInt_getInitialGuess(basis, i, &guess, &spos, &epos);
             int ld = epos - spos + 1;
-			double *Dmat_ptr = pfock->D_mat + spos * nbf + spos;
-			copy_double_matrix_block(Dmat_ptr, nbf, guess, ld, ld, ld);
+            double *Dmat_ptr = pfock->D_mat + spos * nbf + spos;
+            copy_double_matrix_block(Dmat_ptr, nbf, guess, ld, ld, ld);
         }
-		//PFock_putDenMat(0, nbf - 1, 0, nbf - 1, nbf, pfock->D_mat, USE_D_ID, pfock);
-		Buzz_putBlock(pfock->bm_Dmat, 0, nbf, 0, nbf, pfock->D_mat, nbf);
+        Buzz_putBlock(pfock->bm_Dmat, 0, nbf, 0, nbf, pfock->D_mat, nbf);
     }
-    //PFock_sync(pfock);
     MPI_Bcast(&R, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
 
-	Buzz_startBuzzMatrixReadOnlyEpoch(pfock->bm_Dmat);
+    Buzz_startBuzzMatrixReadOnlyEpoch(pfock->bm_Dmat);
     if (1 == ispurif) 
-	{
-        //PFock_getMat(pfock, PFOCK_MAT_TYPE_D, USE_D_ID,
-        //             rowstart, rowend, colstart, colend,
-        //             ldD, D_block);
-		Buzz_getBlock(
-			pfock->bm_Dmat, pfock->bm_Dmat->proc_cnt,
-			rowstart, rowend - rowstart + 1,
-			colstart, colend - colstart + 1,
-			D_block,  ldD
-		);
-		Buzz_flushProcListGetRequests(pfock->bm_Dmat, pfock->bm_Dmat->proc_cnt);
-		
+    {
+        Buzz_getBlock(
+            pfock->bm_Dmat, pfock->bm_Dmat->proc_cnt,
+            rowstart, rowend - rowstart + 1,
+            colstart, colend - colstart + 1,
+            D_block,  ldD
+        );
+        Buzz_flushProcListGetRequests(pfock->bm_Dmat, pfock->bm_Dmat->proc_cnt);
+        
         for (int x = rowstart; x <= rowend; x++) 
             for (int y = colstart; y <= colend; y++) 
                 D_block[(x - rowstart) * ldD + (y - colstart)] *= R / 2.0;
     }
-	Buzz_stopBuzzMatrixReadOnlyEpoch(pfock->bm_Dmat);
+    Buzz_stopBuzzMatrixReadOnlyEpoch(pfock->bm_Dmat);
 }
 
 
@@ -131,41 +126,33 @@ static void fock_build(PFock_t pfock, BasisSet_t basis,
                        int colstart, int colend, int stride,
                        double *D_block, double *F_block)
 {
-    // put density matrix
+    // Put latest density matrix
     if (1 == ispurif) 
-	{
-        //PFock_putDenMat(rowstart, rowend, colstart, colend,
-        //                stride, D_block, USE_D_ID, pfock);
-		Buzz_putBlock(
-			pfock->bm_Dmat, 
-			rowstart, rowend - rowstart + 1,
-			colstart, colend - colstart + 1,
-			D_block, stride
-		);
+    {
+        Buzz_putBlock(
+            pfock->bm_Dmat, 
+            rowstart, rowend - rowstart + 1,
+            colstart, colend - colstart + 1,
+            D_block, stride
+        );
     }
-    //PFock_commitDenMats(pfock);
 
-    // compute Fock matrix
+    // Compute Fock matrix
     PFock_computeFock(basis, pfock);
     
-    // get Fock matrix
-	MPI_Barrier(MPI_COMM_WORLD);
-	Buzz_startBuzzMatrixReadOnlyEpoch(pfock->bm_Fmat);
-	Buzz_startBuzzMatrixReadOnlyEpoch(pfock->bm_Kmat);
+    // Get Fock matrix for purification
+    MPI_Barrier(MPI_COMM_WORLD);
+    Buzz_startBuzzMatrixReadOnlyEpoch(pfock->bm_Fmat);
+    Buzz_startBuzzMatrixReadOnlyEpoch(pfock->bm_Kmat);
     if (1 == ispurif) 
-	{
-		/*
-        PFock_getMat(pfock, PFOCK_MAT_TYPE_F, USE_D_ID,
-                     rowstart, rowend, colstart, colend,
-                     stride, F_block);
-		*/
-		PFock_Buzz_getFockMat(
-			pfock, rowstart, rowend,
-			colstart, colend, stride, F_block
-		);
+    {
+        PFock_Buzz_getFockMat(
+            pfock, rowstart, rowend,
+            colstart, colend, stride, F_block
+        );
     }
-	Buzz_stopBuzzMatrixReadOnlyEpoch(pfock->bm_Fmat);
-	Buzz_stopBuzzMatrixReadOnlyEpoch(pfock->bm_Kmat);
+    Buzz_stopBuzzMatrixReadOnlyEpoch(pfock->bm_Fmat);
+    Buzz_stopBuzzMatrixReadOnlyEpoch(pfock->bm_Kmat);
 }
 
 
@@ -434,7 +421,9 @@ int main (int argc, char **argv)
         }
         
     #ifdef __SCF_OUT__
-        if (myrank == 0) {
+        // TODO: change the following part to use Buzz_Matrix
+        if (myrank == 0) 
+        {
             //double outbuf[nfunctions];
             double *outbuf = (double*) malloc(sizeof(double) * nfunctions);
             assert(outbuf != NULL);
