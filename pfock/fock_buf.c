@@ -42,10 +42,12 @@ void store_F1F2F3_to_Global_JK(PFock_t pfock)
     double *F3 = pfock->bm_F3->mat_block;
     
     Buzz_Matrix_t bm_J = pfock->bm_Fmat;
+    Buzz_startBatchUpdate(bm_J);
     #ifdef __SCF__
     Buzz_Matrix_t bm_K = pfock->bm_Fmat;
     #else
     Buzz_Matrix_t bm_K = pfock->bm_Kmat;
+    Buzz_startBatchUpdate(bm_K);
     #endif
     
     // Update F1
@@ -57,7 +59,7 @@ void store_F1F2F3_to_Global_JK(PFock_t pfock)
         hi[1]  = loadrow[PLEN * A + P_HI];
         posrow = loadrow[PLEN * A + P_W];
         
-        Buzz_accumulateBlock(
+        Buzz_addAccumulateBlockRequest(
             bm_J, 
             lo[0], hi[0] - lo[0] + 1,
             lo[1], hi[1] - lo[1] + 1,
@@ -74,7 +76,7 @@ void store_F1F2F3_to_Global_JK(PFock_t pfock)
         hi[1]  = loadcol[PLEN * B + P_HI];
         poscol = loadcol[PLEN * B + P_W];
         
-        Buzz_accumulateBlock(
+        Buzz_addAccumulateBlockRequest(
             bm_J, 
             lo[0], hi[0] - lo[0] + 1,
             lo[1], hi[1] - lo[1] + 1,
@@ -94,7 +96,7 @@ void store_F1F2F3_to_Global_JK(PFock_t pfock)
             hi[1]  = loadcol[PLEN * B + P_HI];
             poscol = loadcol[PLEN * B + P_W];
             
-            Buzz_accumulateBlock(
+            Buzz_addAccumulateBlockRequest(
                 bm_K, 
                 lo[0], hi[0] - lo[0] + 1,
                 lo[1], hi[1] - lo[1] + 1,
@@ -103,6 +105,13 @@ void store_F1F2F3_to_Global_JK(PFock_t pfock)
         }
     }
     
+    Buzz_execBatchUpdate(bm_J);
+    Buzz_stopBatchUpdate(bm_J);
+    #ifndef __SCF__
+    Buzz_execBatchUpdate(bm_K);
+    Buzz_stopBatchUpdate(bm_K);
+    #endif
+	
     MPI_Barrier(MPI_COMM_WORLD);
 }
 
