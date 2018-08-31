@@ -6,6 +6,7 @@
 #include "CInt.h"
 
 #include "Buzz_Matrix.h"
+#include "Buzz_Task_Queue.h"
 
 /** 
  * @struct  PFock
@@ -163,6 +164,8 @@ struct PFock {
     Buzz_Matrix_t bm_F2;     // Each process's buffer for its J_{PQ}
     Buzz_Matrix_t bm_F3;     // Each process's buffer for its K_{MP, NP, MQ, NQ}
     
+    Buzz_Task_Queue_t task_queue;
+
     // statistics
     double mem_cpu;
     double *mpi_timepass;
