@@ -1324,9 +1324,9 @@ PFockStatus_t PFock_computeFock(BasisSet_t basis, PFock_t pfock)
              ldX3, ldX4, ldX5, ldX6);
              
     // Accumulate F1, F2, F3 to local buffer, ready to accumulate to global J, K
-    Buzz_accumulateBlock(pfock->bm_F1, myrank, 1, 0, sizeX1, F1, sizeX1);
-    Buzz_accumulateBlock(pfock->bm_F2, myrank, 1, 0, sizeX2, F2, sizeX2);
-    Buzz_accumulateBlock(pfock->bm_F3, myrank, 1, 0, sizeX3, F3, sizeX3);
+    Buzz_accumulateBlockToProcess(pfock->bm_F1, myrank, myrank, 1, 0, sizeX1, F1, sizeX1);
+    Buzz_accumulateBlockToProcess(pfock->bm_F2, myrank, myrank, 1, 0, sizeX2, F2, sizeX2);
+    Buzz_accumulateBlockToProcess(pfock->bm_F3, myrank, myrank, 1, 0, sizeX3, F3, sizeX3);
     
     gettimeofday (&tv4, NULL);
     pfock->timereduce += (tv4.tv_sec - tv3.tv_sec) +
@@ -1412,19 +1412,19 @@ PFockStatus_t PFock_computeFock(BasisSet_t basis, PFock_t pfock)
             // Accumulate F1, F2, F3 to local/remote buffer
             if (vrow != myrow) 
             {
-                Buzz_accumulateBlock(pfock->bm_F1, vpid, 1, 0, sizeX1, F1, sizeX1);
+                Buzz_accumulateBlockToProcess(pfock->bm_F1, vpid, vpid, 1, 0, sizeX1, F1, sizeX1);
             } else {
-                Buzz_accumulateBlock(pfock->bm_F1, myrank, 1, 0, sizeX1, F1, sizeX1);
+                Buzz_accumulateBlockToProcess(pfock->bm_F1, myrank, myrank, 1, 0, sizeX1, F1, sizeX1);
             }
 
             if (vcol != mycol) 
             {
-                Buzz_accumulateBlock(pfock->bm_F2, vpid, 1, 0, sizeX2, F2, sizeX2);
+                Buzz_accumulateBlockToProcess(pfock->bm_F2, vpid, vpid, 1, 0, sizeX2, F2, sizeX2);
             } else {
-                Buzz_accumulateBlock(pfock->bm_F2, myrank, 1, 0, sizeX2, F2, sizeX2);
+                Buzz_accumulateBlockToProcess(pfock->bm_F2, myrank, myrank, 1, 0, sizeX2, F2, sizeX2);
             }
 
-            Buzz_accumulateBlock(pfock->bm_F3, vpid, 1, 0, sizeX3, F3, sizeX3);
+            Buzz_accumulateBlockToProcess(pfock->bm_F3, vpid, vpid, 1, 0, sizeX3, F3, sizeX3);
             
             prevrow = vrow;
             prevcol = vcol;
