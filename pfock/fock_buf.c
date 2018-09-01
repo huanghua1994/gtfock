@@ -21,8 +21,10 @@ void load_Global_D(PFock_t pfock)
     int nbf = pfock->nbf;
     double *D_mat = pfock->D_mat;
     Buzz_startBuzzMatrixReadOnlyEpoch(pfock->bm_Dmat);
-    Buzz_getBlock(pfock->bm_Dmat, pfock->bm_Dmat->proc_cnt, 0, nbf, 0, nbf, D_mat, nbf);
-    Buzz_flushProcListGetRequests(pfock->bm_Dmat, pfock->bm_Dmat->proc_cnt);
+    Buzz_startBatchGet(pfock->bm_Dmat);
+    Buzz_addGetBlockRequest(pfock->bm_Dmat, 0, nbf, 0, nbf, D_mat, nbf);
+    Buzz_execBatchGet(pfock->bm_Dmat);
+    Buzz_stopBatchGet(pfock->bm_Dmat);
     Buzz_stopBuzzMatrixReadOnlyEpoch(pfock->bm_Dmat);
 }
 
@@ -111,7 +113,7 @@ void store_F1F2F3_to_Global_JK(PFock_t pfock)
     Buzz_execBatchUpdate(bm_K);
     Buzz_stopBatchUpdate(bm_K);
     #endif
-	
+    
     MPI_Barrier(MPI_COMM_WORLD);
 }
 

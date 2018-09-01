@@ -82,11 +82,22 @@ static void initial_guess(PFock_t pfock, BasisSet_t basis, int ispurif,
             pfock->bm_Dmat, pfock->bm_Dmat->proc_cnt,
             rowstart, rowend - rowstart + 1,
             colstart, colend - colstart + 1,
-            D_block,  ldD
+            D_block,  ldD, 1
         );
         Buzz_flushProcListGetRequests(pfock->bm_Dmat, pfock->bm_Dmat->proc_cnt);
         
+        Buzz_startBatchGet(pfock->bm_Dmat);
+        Buzz_addGetBlockRequest(
+            pfock->bm_Dmat, 
+            rowstart, rowend - rowstart + 1,
+            colstart, colend - colstart + 1,
+            D_block,  ldD
+        );
+        Buzz_execBatchGet(pfock->bm_Dmat);
+        Buzz_stopBatchGet(pfock->bm_Dmat);
+        
         for (int x = rowstart; x <= rowend; x++) 
+            #pragma simd
             for (int y = colstart; y <= colend; y++) 
                 D_block[(x - rowstart) * ldD + (y - colstart)] *= R / 2.0;
     }

@@ -1164,13 +1164,10 @@ void PFock_Buzz_getFockMat(
     int nrows = rowend - rowstart + 1;
     int ncols = colend - colstart + 1;
     
-    Buzz_getBlock(
-        pfock->bm_Fmat, pfock->bm_Fmat->proc_cnt,
-        rowstart, nrows,
-        colstart, ncols,
-        mat, stride
-    );
-    Buzz_flushProcListGetRequests(pfock->bm_Fmat, pfock->bm_Fmat->proc_cnt);
+    Buzz_startBatchGet(pfock->bm_Fmat);
+    Buzz_addGetBlockRequest(pfock->bm_Fmat, rowstart, nrows, colstart, ncols, mat, stride);
+    Buzz_execBatchGet(pfock->bm_Fmat);
+    Buzz_stopBatchGet(pfock->bm_Fmat);
     
     #ifndef __SCF__
     if (nrows * ncols > pfock->getFockMatBufSize)
@@ -1181,15 +1178,14 @@ void PFock_Buzz_getFockMat(
         assert(pfock->getFockMatBuf != NULL);
     }
     double *K = pfock->getFockMatBuf;
-    Buzz_getBlock(
-        pfock->bm_Kmat, pfock->bm_Kmat->proc_cnt,
-        rowstart, nrows,
-        colstart, ncols,
-        K, ncols
-    );
-    Buzz_flushProcListGetRequests(pfock->bm_Kmat, pfock->bm_Kmat->proc_cnt);
+    
+    Buzz_startBatchGet(pfock->bm_Kmat);
+    Buzz_addGetBlockRequest(pfock->bm_Kmat, rowstart, nrows, colstart, ncols, K, ncols);
+    Buzz_execBatchGet(pfock->bm_Kmat);
+    Buzz_stopBatchGet(pfock->bm_Kmat);
+
     for (int i = 0; i < nrows; i++)
-        #pragma vector
+        #pragma simd
         for (int j = 0; j < ncols; j++)
             mat[i * stride + j] += K[i * ncols + j];
     #endif
