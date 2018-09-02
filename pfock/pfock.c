@@ -366,8 +366,7 @@ static PFockStatus_t create_GA (PFock_t pfock)
         PFOCK_PRINTF(1, "GA allocation failed\n");
         return PFOCK_STATUS_ALLOC_FAILED;
     }
-
-    //PFock_getLocalMatInds(pfock, &pfock->D_rowstart, &pfock->D_rowend, &pfock->D_colstart, &pfock->D_colend);    
+  
     int nthreads = omp_get_max_threads();
     int my_rank;
     MPI_Comm comm_world;
@@ -416,22 +415,10 @@ static void destroy_GA(PFock_t pfock)
 
 static PFockStatus_t create_FD_GArrays (PFock_t pfock)
 {
-    int dims[2];
-    int block[2];
-    char str[8];
-    
     int sizeD1 = pfock->sizeX1;
     int sizeD2 = pfock->sizeX2;
     int sizeD3 = pfock->sizeX3;  
-    int *map = (int *)PFOCK_MALLOC(sizeof(int) * (1 + pfock->nprocs));
-    if (NULL == map) {
-        PFOCK_PRINTF(1, "memory allocation failed\n");
-        return PFOCK_STATUS_ALLOC_FAILED;
-    }
-    block[0] = pfock->nprocs;
-    block[1] = 1;
-    
-    PFOCK_FREE(map);
+    int *map;
 
     // Create each process's F1, F2, F3 buffer matrix
     int my_rank;
@@ -574,27 +561,6 @@ static PFockStatus_t create_buffers (PFock_t pfock)
     }
     
     // D buf
-    pfock->D1 = (double **)PFOCK_MALLOC(sizeof(double *) * pfock->max_numdmat2);
-    pfock->D2 = (double **)PFOCK_MALLOC(sizeof(double *) * pfock->max_numdmat2); 
-    pfock->D3 = (double **)PFOCK_MALLOC(sizeof(double *) * pfock->max_numdmat2);
-    if (NULL == pfock->D1 ||
-        NULL == pfock->D2 ||
-        NULL == pfock->D3) {
-        PFOCK_PRINTF (1, "memory allocation failed\n");
-        return PFOCK_STATUS_ALLOC_FAILED;
-    }
-    for (int i = 0; i < pfock->max_numdmat2; i++) {
-        pfock->D1[i] = (double *)PFOCK_MALLOC(sizeof(double) * sizeX1);
-        pfock->D2[i] = (double *)PFOCK_MALLOC(sizeof(double) * sizeX2); 
-        pfock->D3[i] = (double *)PFOCK_MALLOC(sizeof(double) * sizeX3);
-        pfock->mem_cpu += 1.0 * sizeof(double) * (sizeX1 + sizeX2 + sizeX3);
-        if (NULL == pfock->D1[i] ||
-            NULL == pfock->D2[i] ||
-            NULL == pfock->D3[i]) {
-            PFOCK_PRINTF (1, "memory allocation failed\n");
-            return PFOCK_STATUS_ALLOC_FAILED;
-        }
-    }
     size_t nbf2 = pfock->nbf * pfock->nbf;
     pfock->D_mat = (double*) PFOCK_MALLOC(sizeof(double) * nbf2);
     pfock->mem_cpu += 1.0 * sizeof(double) * nbf2;
@@ -641,21 +607,12 @@ static PFockStatus_t create_buffers (PFock_t pfock)
         numF * pfock->max_numdmat2); 
     pfock->F3 = (double *)PFOCK_MALLOC(sizeof(double) * sizeX3 *
            1 * pfock->max_numdmat2);
-    pfock->F4 = (double *)PFOCK_MALLOC(sizeof(double) * sizeX4 *
-        numF * pfock->max_numdmat2);
-    pfock->F5 = (double *)PFOCK_MALLOC(sizeof(double) * sizeX5 *
-        numF * pfock->max_numdmat2); 
-    pfock->F6 = (double *)PFOCK_MALLOC(sizeof(double) * sizeX6 *
-        numF * pfock->max_numdmat2);
     pfock->mem_cpu += 1.0 * sizeof(double) *
-        (((double)sizeX1 + sizeX2 + sizeX4 + sizeX5 + sizeX6) * 
+        (((double)sizeX1 + sizeX2) * 
         numF + sizeX3) * pfock->max_numdmat2;
     if (NULL == pfock->F1 ||
         NULL == pfock->F2 ||
-        NULL == pfock->F3 ||
-        NULL == pfock->F4 ||
-        NULL == pfock->F5 ||
-        NULL == pfock->F6) {
+        NULL == pfock->F3 ) {
         PFOCK_PRINTF (1, "memory allocation failed\n");
         return PFOCK_STATUS_ALLOC_FAILED;
     } 
@@ -686,22 +643,10 @@ static void destroy_buffers (PFock_t pfock)
     PFOCK_FREE(pfock->rowsize);
     PFOCK_FREE(pfock->colsize);
 
-    for (int i = 0; i < pfock->max_numdmat2; i++) 
-    {
-        PFOCK_FREE(pfock->D1[i]);
-        PFOCK_FREE(pfock->D2[i]);
-        PFOCK_FREE(pfock->D3[i]);
-    }
     PFOCK_FREE(pfock->D_mat);
-    PFOCK_FREE(pfock->D1);
-    PFOCK_FREE(pfock->D2);
-    PFOCK_FREE(pfock->D3);
     PFOCK_FREE(pfock->F1);
     PFOCK_FREE(pfock->F2);
-    PFOCK_FREE(pfock->F3);
-    PFOCK_FREE(pfock->F4);
-    PFOCK_FREE(pfock->F5);
-    PFOCK_FREE(pfock->F6);    
+    PFOCK_FREE(pfock->F3);  
 }
 
 
@@ -1064,9 +1009,6 @@ PFockStatus_t PFock_computeFock(BasisSet_t basis, PFock_t pfock)
     double *F1 = pfock->F1;
     double *F2 = pfock->F2;
     double *F3 = pfock->F3;
-    double *F4 = pfock->F4;
-    double *F5 = pfock->F5;
-    double *F6 = pfock->F6;
     int maxrowsize  = pfock->maxrowsize;
     int maxcolfuncs = pfock->maxcolfuncs;
     int maxcolsize  = pfock->maxcolsize;
@@ -1104,8 +1046,7 @@ PFockStatus_t PFock_computeFock(BasisSet_t basis, PFock_t pfock)
         (tv4.tv_usec - tv3.tv_usec) / 1000.0 / 1000.0;
     
     gettimeofday (&tv3, NULL);   
-    reset_F(pfock->numF, pfock->num_dmat2, F1, F2, F3, F4, F5, F6,
-            sizeX1, sizeX2, sizeX3, sizeX4, sizeX5, sizeX6);
+    reset_F(pfock->numF, pfock->num_dmat2, F1, F2, F3, sizeX1, sizeX2, sizeX3);
     gettimeofday (&tv4, NULL);
     pfock->timeinit += (tv4.tv_sec - tv3.tv_sec) +
         (tv4.tv_usec - tv3.tv_usec) / 1000.0 / 1000.0;
@@ -1132,7 +1073,6 @@ PFockStatus_t PFock_computeFock(BasisSet_t basis, PFock_t pfock)
                   pfock->tolscr2,
                   my_sshellrow, my_sshellcol,
                   startM, endM, startP, endP,
-                  //D1, D2, D3, F1, F2, F3, F4, F5, F6, 
                   D_mat, F1, F2, F3,
                   ldX1, ldX2, ldX3, ldX4, ldX5, ldX6,
                   sizeX1, sizeX2, sizeX3,
@@ -1148,14 +1088,7 @@ PFockStatus_t PFock_computeFock(BasisSet_t basis, PFock_t pfock)
     gettimeofday (&tv3, NULL);
     
     // Reduction of F1, F2, F3 on CPU
-    reduce_F(pfock->numF, pfock->num_dmat2, F1, F2, F3, F4, F5, F6,
-             sizeX1, sizeX2, sizeX3,
-             sizeX4, sizeX5, sizeX6,
-             maxrowsize, maxcolsize,
-             pfock->nfuncs_row, pfock->nfuncs_col,
-             pfock->rowpos[my_sshellrow],
-             pfock->colpos[my_sshellcol],
-             ldX3, ldX4, ldX5, ldX6);
+    reduce_F(F1, F2, F3, maxrowsize, maxcolsize, ldX3, ldX4, ldX5, ldX6);
              
     // Accumulate F1, F2, F3 to local buffer, ready to accumulate to global J, K
     Buzz_accumulateBlockToProcess(pfock->bm_F1, myrank, myrank, 1, 0, sizeX1, F1, sizeX1, 0);
@@ -1192,9 +1125,8 @@ PFockStatus_t PFock_computeFock(BasisSet_t basis, PFock_t pfock)
             if (0 == stealed) 
             {
                 // Reset F buffers as zero
-                reset_F(pfock->numF, pfock->num_dmat2, F1, F2, F3, F4, F5, F6,
-                        sizeX1, sizeX2, sizeX3, sizeX4, sizeX5, sizeX6);
-                        
+                reset_F(pfock->numF, pfock->num_dmat2, F1, F2, F3, sizeX1, sizeX2, sizeX3);
+                
                 pfock->stealfrom++;
             }
             gettimeofday (&tv4, NULL);
@@ -1218,7 +1150,6 @@ PFockStatus_t PFock_computeFock(BasisSet_t basis, PFock_t pfock)
                       pfock->rowptr, pfock->colptr,
                       pfock->tolscr2,
                       vsshellrow, vsshellcol, startM, endM, startP, endP,
-                      //D1_task, D2_task, VD3, F1, F2, F3, F4, F5, F6,
                       D_mat, F1, F2, F3, 
                       ldX1, ldX2, ldX3, ldX4, ldX5, ldX6,
                       sizeX1, sizeX2, sizeX3, sizeX4, sizeX5, sizeX6,
@@ -1234,14 +1165,7 @@ PFockStatus_t PFock_computeFock(BasisSet_t basis, PFock_t pfock)
         if (1 == stealed) 
         {
             // Reduction of F1, F2, F3 on CPU
-            reduce_F(pfock->numF, pfock->num_dmat2, F1, F2, F3, F4, F5, F6,
-                     sizeX1, sizeX2, sizeX3,
-                     sizeX4, sizeX5, sizeX6,
-                     maxrowsize, maxcolsize,
-                     vnfuncs_row, vnfuncs_col,
-                     pfock->rowpos[vsshellrow],
-                     pfock->colpos[vsshellcol],
-                     ldX3, ldX4, ldX5, ldX6);
+            reduce_F(F1, F2, F3, maxrowsize, maxcolsize, ldX3, ldX4, ldX5, ldX6);
 
             // Accumulate F1, F2, F3 to local/remote buffer
             if (vrow != myrow) 

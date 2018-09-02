@@ -326,9 +326,7 @@ void fock_task(
     double tolscr2, int startrow, int startcol,
     int startM, int endM, int startP, int endP,
     double *D_mat, 
-    // double **D1, double **D2, double **D3, // Unused
     double *F1, double *F2, double *F3,
-    // double *F4, double *F5, double *F6,    // Unused
     int ldX1, int ldX2, int ldX3,
     int ldX4, int ldX5, int ldX6,
     int sizeX1, int sizeX2, int sizeX3,
@@ -584,10 +582,7 @@ void fock_task(
     } // #pragma omp parallel
 }
 
-void reset_F(int numF, int num_dmat, double *F1, double *F2, double *F3,
-             double *F4, double *F5, double *F6,  // Unused
-             int sizeX1, int sizeX2, int sizeX3,
-             int sizeX4, int sizeX5, int sizeX6)  // Unused
+void reset_F(int numF, int num_dmat, double *F1, double *F2, double *F3, int sizeX1, int sizeX2, int sizeX3)
 {
     #pragma omp parallel
     {
@@ -652,15 +647,7 @@ static int block_low(int i, int n, int block_size)
     return res;
 }
 
-void reduce_F(int numF, int num_dmat,              // Unused
-              double *F1, double *F2, double *F3,
-              double *F4, double *F5, double *F6,  // Unused
-              int sizeX1, int sizeX2, int sizeX3,  // Unused
-              int sizeX4, int sizeX5, int sizeX6,  // Unused
-              int maxrowsize, int maxcolsize,
-              int maxrowfuncs, int maxcolfuncs,    // Unused
-              int iX3M, int iX3P,                  // Unused
-              int ldX3, int ldX4, int ldX5, int ldX6)
+void reduce_F(double *F1, double *F2, double *F3, int maxrowsize, int maxcolsize, int ldX3, int ldX4, int ldX5, int ldX6)
 {
     int nthreads = omp_get_max_threads();
     #pragma omp parallel 

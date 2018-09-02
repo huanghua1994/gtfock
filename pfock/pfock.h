@@ -110,10 +110,7 @@ struct PFock {
     double *D_mat;
 
     // global arrays
-    //int *ga_F;
     int *ga_D;
-    //int *ga_K;
-    //int *gatable[4];
     int ga_H;
     int ga_S;
     int ga_X;
@@ -137,23 +134,11 @@ struct PFock {
     int ldX4;
     int ldX5;
     int ldX6;
-    double **D1;
-    double **D2;
-    double **D3;
     double *F1;
     double *F2;
     double *F3;
-    double *F4;
-    double *F5;
-    double *F6;
     int numF;
     int ncpu_f;
-    //int *ga_D1;
-    //int *ga_D2;
-    //int *ga_D3;
-    //int *ga_F1;
-    //int *ga_F2;
-    //int *ga_F3;
 
     int getFockMatBufSize;
     double *getFockMatBuf;
