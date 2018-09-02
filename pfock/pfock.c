@@ -358,16 +358,15 @@ static PFockStatus_t create_GA (PFock_t pfock)
     block[0] = nprow;
     block[1] = npcol;
 
-    pfock->ga_D = (int *)PFOCK_MALLOC(sizeof(int) * pfock->max_numdmat2);
-
+    // TODO: Remove this GA when other GAs have been removed
     sprintf(str, "D_0");
+    pfock->ga_D = (int *)PFOCK_MALLOC(sizeof(int) * pfock->max_numdmat2);\
     pfock->ga_D[0] = NGA_Create_irreg(C_DBL, 2, dims, str, block, map);
     if (0 == pfock->ga_D[0]) {
         PFOCK_PRINTF(1, "GA allocation failed\n");
         return PFOCK_STATUS_ALLOC_FAILED;
     }
   
-    int nthreads = omp_get_max_threads();
     int my_rank;
     MPI_Comm comm_world;
     MPI_Comm_rank(MPI_COMM_WORLD, &my_rank);
@@ -377,21 +376,21 @@ static PFockStatus_t create_GA (PFock_t pfock)
         my_rank, pfock->nbf, pfock->nbf, 
         pfock->nprow, pfock->npcol,
         pfock->rowptr_f, pfock->colptr_f, 
-        nthreads, 0
+        1, 0
     );
     Buzz_createBuzzMatrix(
         &pfock->bm_Fmat, comm_world, MPI_DOUBLE, 8,
         my_rank, pfock->nbf, pfock->nbf, 
         pfock->nprow, pfock->npcol,
         pfock->rowptr_f, pfock->colptr_f, 
-        nthreads, 0
+        1, 0
     );
     Buzz_createBuzzMatrix(
         &pfock->bm_Kmat, comm_world, MPI_DOUBLE, 8,
         my_rank, pfock->nbf, pfock->nbf, 
         pfock->nprow, pfock->npcol,
         pfock->rowptr_f, pfock->colptr_f, 
-        nthreads, 0
+        1, 0
     );
     MPI_Comm_free(&comm_world);
     pfock->getFockMatBufSize = 0;
@@ -871,7 +870,6 @@ PFockStatus_t PFock_create(BasisSet_t basis, int nprow, int npcol, int ntasks,
         return PFOCK_STATUS_ALLOC_FAILED;
     }
     
-    pfock->committed = 0;
     *_pfock = pfock;
     
     return PFOCK_STATUS_SUCCESS;
@@ -919,24 +917,6 @@ PFockStatus_t PFock_destroy(PFock_t pfock)
 }
 
 
-PFockStatus_t PFock_setNumDenMat(int numdmat, PFock_t pfock)
-{
-    if (pfock->committed == 1) {
-        PFOCK_PRINTF(1, "Can't change number of matrices"
-                      " after PFock_commitDenMats() is called.\n");
-        return PFOCK_STATUS_EXECUTION_FAILED;
-    }
-    if (numdmat <= 0 || numdmat > pfock->max_numdmat) {
-        PFOCK_PRINTF(1, "Invalid number of density matrices\n");
-        return PFOCK_STATUS_INVALID_VALUE;
-    }
-    int numdmat2 = numdmat * (pfock->nosymm + 1);
-    pfock->num_dmat = numdmat;
-    pfock->num_dmat2 = numdmat2;
-    
-    return PFOCK_STATUS_EXECUTION_FAILED;
-}
-
 void PFock_Buzz_getFockMat(
     PFock_t pfock,
     int rowstart, int rowend,
@@ -982,7 +962,6 @@ PFockStatus_t PFock_computeFock(BasisSet_t basis, PFock_t pfock)
     struct timeval tv4; 
     int myrank;
     MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
-    pfock->committed    = 0;      
     pfock->timepass     = 0.0;
     pfock->timereduce   = 0.0;
     pfock->timeinit     = 0.0;
@@ -1113,8 +1092,8 @@ PFockStatus_t PFock_computeFock(BasisSet_t basis, PFock_t pfock)
         int vsblk_row   = pfock->rowptr_blk[vrow];
         int vsblk_col   = pfock->colptr_blk[vcol];
         int vnblks_col  = pfock->colptr_blk[vcol + 1] - vsblk_col;       
-        int vnfuncs_row = pfock->rowptr_f[vrow + 1] - pfock->rowptr_f[vrow];
-        int vnfuncs_col = pfock->colptr_f[vcol + 1] - pfock->colptr_f[vcol];
+        //int vnfuncs_row = pfock->rowptr_f[vrow + 1] - pfock->rowptr_f[vrow];
+        //int vnfuncs_col = pfock->colptr_f[vcol + 1] - pfock->colptr_f[vcol];
         int vsshellrow  = pfock->rowptr_sh[vrow];   
         int vsshellcol  = pfock->colptr_sh[vcol];
         int stealed = 0;

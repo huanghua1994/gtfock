@@ -361,7 +361,10 @@ int main (int argc, char **argv)
     if (myrank == 0) {
         printf("  initialing D ...\n");
     }
-    PFock_setNumDenMat(NUM_D, pfock);
+
+    pfock->num_dmat  = NUM_D;
+    pfock->num_dmat2 = NUM_D * (pfock->nosymm + 1);
+	
     initial_guess(pfock, basis, purif->runpurif,
                   rowstart, rowend, colstart, colend,
                   purif->D_block, purif->ldx);
