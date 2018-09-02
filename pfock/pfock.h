@@ -109,8 +109,6 @@ struct PFock {
 
     // global arrays
     int *ga_D;
-    int ga_H;
-    int ga_S;
     int ga_X;
 
     double *FT_block;
@@ -140,6 +138,11 @@ struct PFock {
 
     int getFockMatBufSize;
     double *getFockMatBuf;
+	Buzz_Matrix_t bm_Hmat;
+	Buzz_Matrix_t bm_Xmat;
+	Buzz_Matrix_t bm_Smat;
+	Buzz_Matrix_t bm_tmp1;
+	Buzz_Matrix_t bm_tmp2;
     Buzz_Matrix_t bm_Dmat;      // Global density matrix
     Buzz_Matrix_t bm_Fmat;      // Global Coulomb matrix & Fock matrix
     Buzz_Matrix_t bm_Kmat;      // Global exchange matrix

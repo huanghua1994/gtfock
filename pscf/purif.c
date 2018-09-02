@@ -642,7 +642,7 @@ void compute_diis (PFock_t pfock, purif_t * purif,
 }
 
 
-#if 1
+#if 0
 static void peig(int ga_A, int ga_B, int n, int nprow, int npcol, double *eval)
 {
     int myrank;

@@ -180,16 +180,25 @@ static void init_oedmat(BasisSet_t basis, PFock_t pfock,
 
     // compute S and X
     if (myrank == 0) {
-        printf("  computing H\n");
+        printf("  computing S\n");
     }
     t1 = MPI_Wtime();
     PFock_createOvlMat(pfock, basis);
-    if (purif->runpurif == 1) {
+	Buzz_startBuzzMatrixReadOnlyEpoch(pfock->bm_Smat);
+    if (purif->runpurif == 1) 
+	{
         PFock_getOvlMat(pfock, srow_purif, erow_purif, scol_purif, ecol_purif,
                         ldx, purif->S_block);
+    }
+	Buzz_stopBuzzMatrixReadOnlyEpoch(pfock->bm_Smat);
+	
+	Buzz_startBuzzMatrixReadOnlyEpoch(pfock->bm_Xmat);
+	 if (purif->runpurif == 1) 
+	{
         PFock_getOvlMat2(pfock, srow_purif, erow_purif, scol_purif, ecol_purif,
                          ldx, purif->X_block);
     }
+	Buzz_stopBuzzMatrixReadOnlyEpoch(pfock->bm_Xmat);
     PFock_destroyOvlMat(pfock);
     t2 = MPI_Wtime();
     if (myrank == 0) {
@@ -203,10 +212,13 @@ static void init_oedmat(BasisSet_t basis, PFock_t pfock,
     }
     t1 = MPI_Wtime();
     PFock_createCoreHMat(pfock, basis);
-    if (purif->runpurif == 1) {
+	Buzz_startBuzzMatrixReadOnlyEpoch(pfock->bm_Hmat);
+    if (purif->runpurif == 1) 
+	{
         PFock_getCoreHMat(pfock, srow_purif, erow_purif,
                           scol_purif, ecol_purif, ldx, purif->H_block);
     }
+	Buzz_stopBuzzMatrixReadOnlyEpoch(pfock->bm_Hmat);
     PFock_destroyCoreHMat(pfock);
     t2 = MPI_Wtime();
     if (myrank == 0) {
@@ -430,20 +442,16 @@ int main (int argc, char **argv)
         if (myrank == 0) 
         {
             //double outbuf[nfunctions];
-            double *outbuf = (double*) malloc(sizeof(double) * nfunctions);
+            double *outbuf = (double*) malloc(sizeof(double) * nfunctions * nfunctions);
+			PFock_Buzz_getFockMat(pfock, 0, nfunctions, 0, nfunctions, nfunctions, outbuf);
+			
             assert(outbuf != NULL);
             char fname[1024];
             sprintf(fname, "XFX_%d_%d.dat", nfunctions, iter);
             FILE *fp = fopen(fname, "w+");
             assert(fp != NULL);
-            for (int i = 0; i < nfunctions; i++) {
-                PFock_getMat(pfock, PFOCK_MAT_TYPE_F, USE_D_ID,
-                             i, i, USE_D_ID, nfunctions - 1,
-                             nfunctions, outbuf);
-                for (int j = 0; j < nfunctions; j++) {
-                    fprintf(fp, "%.10e\n", outbuf[j]);
-                }
-            }
+			for (int i = 0; i < nfunctions * nfunctions; i++)
+				fprintf(fp, "%.10e\n", outbuf[i]);
             fclose(fp);
             free(outbuf);
         }
