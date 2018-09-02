@@ -45,7 +45,6 @@ static void initial_guess(PFock_t pfock, BasisSet_t basis, int ispurif,
     MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
 
     double d_zero = 0.0;
-    PFock_fillDenMat(0.0, USE_D_ID, pfock);
     Buzz_fillBuzzMatrix(pfock->bm_Dmat, &d_zero);
     
     int nbf = pfock->nbf;

@@ -359,14 +359,7 @@ static PFockStatus_t create_GA (PFock_t pfock)
     block[1] = npcol;
 
     pfock->ga_D = (int *)PFOCK_MALLOC(sizeof(int) * pfock->max_numdmat2);
-    pfock->ga_F = (int *)PFOCK_MALLOC(sizeof(int) * pfock->max_numdmat2);
-    pfock->ga_K = (int *)PFOCK_MALLOC(sizeof(int) * pfock->max_numdmat2);
-    if (pfock->ga_D == NULL ||
-        pfock->ga_F == NULL ||
-        pfock->ga_K == NULL) {
-        PFOCK_PRINTF(1, "memory allocation failed\n");
-        return PFOCK_STATUS_ALLOC_FAILED;        
-    }
+
     sprintf(str, "D_0");
     pfock->ga_D[0] = NGA_Create_irreg(C_DBL, 2, dims, str, block, map);
     if (0 == pfock->ga_D[0]) {
@@ -405,35 +398,6 @@ static PFockStatus_t create_GA (PFock_t pfock)
     pfock->getFockMatBufSize = 0;
     pfock->getFockMatBuf = NULL;
 
-    for (int i = 0; i < pfock->max_numdmat2; i++) {
-        if (i != 0) {                
-            sprintf(str, "D_%d", i);
-            pfock->ga_D[i] = GA_Duplicate(pfock->ga_D[0], str);
-            if (0 == pfock->ga_D[i]) {
-                PFOCK_PRINTF(1, "GA allocation failed\n");
-                return PFOCK_STATUS_ALLOC_FAILED;
-            }
-        }
-    
-        sprintf(str, "F_%d", i);
-        pfock->ga_F[i] = GA_Duplicate(pfock->ga_D[0], str);
-        if (0 == pfock->ga_F[i]) {
-            PFOCK_PRINTF(1, "GA allocation failed\n");
-            return PFOCK_STATUS_ALLOC_FAILED;
-        }
-
-        sprintf (str, "K_%d", i);
-        pfock->ga_K[i] = GA_Duplicate(pfock->ga_D[0], str);
-        if (0 == pfock->ga_K[i]) {
-            PFOCK_PRINTF(1, "GA allocation failed\n");
-            return PFOCK_STATUS_ALLOC_FAILED;
-        }
-    }
-    pfock->gatable[PFOCK_MAT_TYPE_D] = pfock->ga_D;
-    pfock->gatable[PFOCK_MAT_TYPE_F] = pfock->ga_F;
-    pfock->gatable[PFOCK_MAT_TYPE_J] = pfock->ga_F;
-    pfock->gatable[PFOCK_MAT_TYPE_K] = pfock->ga_K;
-
     PFOCK_FREE(map);
     
     return PFOCK_STATUS_SUCCESS;
@@ -442,17 +406,11 @@ static PFockStatus_t create_GA (PFock_t pfock)
 
 static void destroy_GA(PFock_t pfock)
 {
-    for (int i = 0; i < pfock->max_numdmat2; i++) 
-    {
-        GA_Destroy(pfock->ga_D[i]);        
-        GA_Destroy(pfock->ga_F[i]);
-        GA_Destroy(pfock->ga_K[i]);
-    }
-    PFOCK_FREE(pfock->ga_D);
-    PFOCK_FREE(pfock->ga_F);
-    PFOCK_FREE(pfock->ga_K);
+	GA_Destroy(pfock->ga_D[0]);
     
     Buzz_destroyBuzzMatrix(pfock->bm_Dmat);
+	Buzz_destroyBuzzMatrix(pfock->bm_Fmat);
+	Buzz_destroyBuzzMatrix(pfock->bm_Kmat);
 }
 
 
@@ -472,108 +430,6 @@ static PFockStatus_t create_FD_GArrays (PFock_t pfock)
     }
     block[0] = pfock->nprocs;
     block[1] = 1;
-
-    // for D1
-    for (int i = 0; i < pfock->nprocs; i++) {
-        map[i] = i;
-    }
-    map[pfock->nprocs] = 0;
-    dims[0] = pfock->nprocs;
-    dims[1] = sizeD1;
-    pfock->ga_D1 = (int *)PFOCK_MALLOC(sizeof(int) * pfock->max_numdmat2);
-    if (pfock->ga_D1 == NULL) {
-        PFOCK_PRINTF(1, "memory allocation failed\n");
-        return PFOCK_STATUS_ALLOC_FAILED;
-    }
-    sprintf(str, "D1_0");
-    pfock->ga_D1[0] = NGA_Create_irreg(C_DBL, 2, dims, str, block, map);
-    for (int i = 0; i < pfock->max_numdmat2; i++) {
-        if (i != 0) {
-            sprintf(str, "D1_%d", i);
-            pfock->ga_D1[i] = GA_Duplicate(pfock->ga_D1[0], str);
-        }
-        if (pfock->ga_D1[i] == 0) {
-            PFOCK_PRINTF(1, "GA allocation failed\n");
-            return PFOCK_STATUS_ALLOC_FAILED;
-        }
-    }
-        
-    // for D2
-    for (int i = 0; i < pfock->nprocs; i++)
-    {
-        map[i] = i;
-    }
-    map[pfock->nprocs] = 0;
-    dims[0] = pfock->nprocs;
-    dims[1] = sizeD2;
-    pfock->ga_D2 = (int *)PFOCK_MALLOC(sizeof(int) * pfock->max_numdmat2);
-    if (pfock->ga_D2 == NULL) {
-        PFOCK_PRINTF(1, "memory allocation failed\n");
-        return PFOCK_STATUS_ALLOC_FAILED;
-    }
-    sprintf(str, "D2_0");
-    pfock->ga_D2[0] = NGA_Create_irreg(C_DBL, 2, dims, str, block, map);
-    for (int i = 0; i < pfock->max_numdmat2; i++) {
-        if (i != 0) {
-            sprintf(str, "D2_%d", i);
-            pfock->ga_D2[i] = GA_Duplicate(pfock->ga_D2[0], str);
-        }
-        if (pfock->ga_D2[i] == 0) {
-            PFOCK_PRINTF(1, "GA allocation failed\n");
-            return PFOCK_STATUS_ALLOC_FAILED;
-        }
-    }
-    
-    // for D3
-    for (int i = 0; i < pfock->nprocs; i++)
-    {
-        map[i] = i;
-    }
-    map[pfock->nprocs] = 0;
-    dims[0] = pfock->nprocs;
-    dims[1] = sizeD3;
-    pfock->ga_D3 = (int *)PFOCK_MALLOC(sizeof(int) * pfock->max_numdmat2);
-    if (pfock->ga_D3 == NULL) {
-        PFOCK_PRINTF(1, "memory allocation failed\n");
-        return PFOCK_STATUS_ALLOC_FAILED;
-    }
-    sprintf(str, "D3_0");
-    pfock->ga_D3[0] = NGA_Create_irreg(C_DBL, 2, dims, str, block, map);
-    for (int i = 0; i < pfock->max_numdmat2; i++) {
-        if (i != 0) {
-            sprintf(str, "D3_%d", i);
-            pfock->ga_D3[i] = GA_Duplicate(pfock->ga_D3[0], str);
-        }
-        if (pfock->ga_D3[i] == 0) {
-            PFOCK_PRINTF(1, "GA allocation failed\n");
-            return PFOCK_STATUS_ALLOC_FAILED;
-        }
-    }
-
-    // F1, F2, and F3
-    pfock->ga_F1 = (int *)PFOCK_MALLOC(sizeof(int) * pfock->max_numdmat2);
-    pfock->ga_F2 = (int *)PFOCK_MALLOC(sizeof(int) * pfock->max_numdmat2);
-    pfock->ga_F3 = (int *)PFOCK_MALLOC(sizeof(int) * pfock->max_numdmat2);
-    if (pfock->ga_F1 == NULL ||
-        pfock->ga_F2 == NULL ||
-        pfock->ga_F3 == NULL) {
-        PFOCK_PRINTF(1, "memory allocation failed\n");
-        return PFOCK_STATUS_ALLOC_FAILED;
-    }
-    for (int i = 0; i < pfock->max_numdmat2; i++) {
-        sprintf(str, "F1_%d", i);
-        pfock->ga_F1[i] = GA_Duplicate(pfock->ga_D1[0], str);
-        sprintf(str, "F2_%d", i);
-        pfock->ga_F2[i] = GA_Duplicate(pfock->ga_D2[0], str);
-        sprintf(str, "F3_%d", i);
-        pfock->ga_F3[i] = GA_Duplicate(pfock->ga_D3[0], str);
-        if (pfock->ga_F1[i] == 0 ||
-            pfock->ga_F2[i] == 0 ||
-            pfock->ga_F3[i] == 0) {
-            PFOCK_PRINTF(1, "GA allocation failed\n");
-            return PFOCK_STATUS_ALLOC_FAILED;
-        }
-    }
     
     PFOCK_FREE(map);
 
@@ -816,29 +672,11 @@ static PFockStatus_t create_buffers (PFock_t pfock)
 
 static void destroy_buffers (PFock_t pfock)
 {
-    for (int i = 0; i < pfock->max_numdmat2; i++) 
-    {
-        GA_Destroy(pfock->ga_D1[i]);
-        GA_Destroy(pfock->ga_D2[i]);
-        GA_Destroy(pfock->ga_D3[i]);
-        GA_Destroy(pfock->ga_F1[i]);
-        GA_Destroy(pfock->ga_F2[i]);
-        GA_Destroy(pfock->ga_F3[i]);
-    }
-    Buzz_destroyBuzzMatrix(pfock->bm_Fmat);
-    Buzz_destroyBuzzMatrix(pfock->bm_Kmat);
     Buzz_destroyBuzzMatrix(pfock->bm_F1);
     Buzz_destroyBuzzMatrix(pfock->bm_F2);
     Buzz_destroyBuzzMatrix(pfock->bm_F3);
     if (pfock->getFockMatBuf != NULL) PFOCK_FREE(pfock->getFockMatBuf);
 
-    PFOCK_FREE(pfock->ga_D1);
-    PFOCK_FREE(pfock->ga_D2);
-    PFOCK_FREE(pfock->ga_D3);
-    PFOCK_FREE(pfock->ga_F1);
-    PFOCK_FREE(pfock->ga_F2);
-    PFOCK_FREE(pfock->ga_F3);
-        
     PFOCK_FREE(pfock->rowpos);
     PFOCK_FREE(pfock->colpos);
     PFOCK_FREE(pfock->rowptr);
