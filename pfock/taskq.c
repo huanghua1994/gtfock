@@ -1,6 +1,5 @@
 #include <stdlib.h>
 #include <stdio.h>
-#include <ga.h>
 
 #include "config.h"
 #include "taskq.h"

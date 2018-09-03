@@ -107,10 +107,6 @@ struct PFock {
     
     double *D_mat;
 
-    // global arrays
-    int *ga_D;
-    int ga_X;
-
     double *FT_block;
 
     // buf D and F

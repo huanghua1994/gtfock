@@ -1,8 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <mpi.h>
-#include <ga.h>
-#include <macdecls.h>
+//#include <macdecls.h>
 #include <string.h>
 #include <sys/time.h>
 #include <omp.h>
@@ -331,42 +330,12 @@ static PFockStatus_t create_GA (PFock_t pfock)
     int nbf;
     int nprow;
     int npcol;
-    int *map;
-    int i;
-    int dims[2];
-    int block[2];
-    char str[8];
 
     // create global arrays
     nbf = pfock->nbf;
     nprow = pfock->nprow;
     npcol = pfock->npcol;
-    map = (int *)PFOCK_MALLOC(sizeof(int) * (nprow + npcol));
-    if (NULL == map) {
-        PFOCK_PRINTF(1, "memory allocation failed\n");
-        return PFOCK_STATUS_ALLOC_FAILED;
-    }
-    
-    for (i = 0; i < nprow; i++) {       
-        map[i] = pfock->rowptr_f[i];
-    }   
-    for (i = 0; i < npcol; i++) {
-        map[i + nprow] = pfock->colptr_f[i];
-    } 
-    dims[0] = nbf;
-    dims[1] = nbf;
-    block[0] = nprow;
-    block[1] = npcol;
-
-    // TODO: Remove this GA when other GAs have been removed
-    sprintf(str, "D_0");
-    pfock->ga_D = (int *)PFOCK_MALLOC(sizeof(int) * pfock->max_numdmat2);\
-    pfock->ga_D[0] = NGA_Create_irreg(C_DBL, 2, dims, str, block, map);
-    if (0 == pfock->ga_D[0]) {
-        PFOCK_PRINTF(1, "GA allocation failed\n");
-        return PFOCK_STATUS_ALLOC_FAILED;
-    }
-  
+     
     int my_rank;
     MPI_Comm comm_world;
     MPI_Comm_rank(MPI_COMM_WORLD, &my_rank);
@@ -430,8 +399,6 @@ static PFockStatus_t create_GA (PFock_t pfock)
     MPI_Comm_free(&comm_world);
     pfock->getFockMatBufSize = 0;
     pfock->getFockMatBuf = NULL;
-
-    PFOCK_FREE(map);
     
     return PFOCK_STATUS_SUCCESS;
 }
@@ -439,8 +406,6 @@ static PFockStatus_t create_GA (PFock_t pfock)
 
 static void destroy_GA(PFock_t pfock)
 {
-	GA_Destroy(pfock->ga_D[0]);
-    
     Buzz_destroyBuzzMatrix(pfock->bm_Dmat);
 	Buzz_destroyBuzzMatrix(pfock->bm_Fmat);
 	Buzz_destroyBuzzMatrix(pfock->bm_Kmat);
@@ -687,6 +652,7 @@ static void destroy_buffers (PFock_t pfock)
 PFockStatus_t init_GA(int nbf, int nprow, int npcol,
                       int num_dmat, int sizeheap, int sizestack)
 {
+	/*
     int maxrowsize = (nbf + nprow - 1)/nprow;
     int maxcolsize = (nbf + npcol - 1)/npcol;    
     int heap = num_dmat * 5 * maxrowsize * maxcolsize;
@@ -698,6 +664,7 @@ PFockStatus_t init_GA(int nbf, int nprow, int npcol,
     if (!MA_init(C_DBL, heap, stack)) {
         return PFOCK_STATUS_INIT_FAILED;
     }
+	*/
     
     return PFOCK_STATUS_SUCCESS;
 }
@@ -705,7 +672,7 @@ PFockStatus_t init_GA(int nbf, int nprow, int npcol,
 
 void finalize_GA(void)
 {    
-    GA_Terminate();
+    //GA_Terminate();
 }
 
 
@@ -1297,31 +1264,13 @@ PFockStatus_t PFock_getCoreHMat(PFock_t pfock, int rowstart, int rowend,
 
 PFockStatus_t PFock_createOvlMat(PFock_t pfock, BasisSet_t basis)
 {    
-    int lo[2];
-    int hi[2];
     double *mat;
     int stride;
     double dzero = 0.0;
 
     int myrank;
     MPI_Comm_rank(MPI_COMM_WORLD, &myrank);    
-    
-	int ga_tmp  = GA_Duplicate(pfock->ga_D[0], "tmp mat");
-	int ga_tmp2 = GA_Duplicate(pfock->ga_D[0], "tmp mat");
-	pfock->ga_X = GA_Duplicate(pfock->ga_D[0], "X mat");
-	if (0 == ga_tmp) {
-        PFOCK_PRINTF (1, "GA allocation failed\n");
-        return PFOCK_STATUS_ALLOC_FAILED;
-    }
-    if (0 == ga_tmp2) {
-        PFOCK_PRINTF (1, "GA allocation failed\n");
-        return PFOCK_STATUS_ALLOC_FAILED;
-    }
-	if (0 == pfock->ga_X) {
-        PFOCK_PRINTF (1, "GA allocation failed\n");
-        return PFOCK_STATUS_ALLOC_FAILED;
-    }
-	
+
     // compute S
 	Buzz_fillBuzzMatrix(pfock->bm_Smat, &dzero);
 	mat    = pfock->bm_Smat->mat_block;
@@ -1366,42 +1315,55 @@ PFockStatus_t PFock_createOvlMat(PFock_t pfock, BasisSet_t basis)
             blockS[i * ld + j] = blocktmp[i * ld + j] * lambda_vector[j];
     }
     free(lambda_vector);
-	
-	// Copy Buzz_Matrix data back to GA, we need GA to do DGEMM now
-	double *ga_blockS, *ga_blocktmp;
-	int ga_ld;
-	NGA_Distribution(ga_tmp, myrank, lo, hi);
-	NGA_Access(ga_tmp,  lo, hi, &ga_blocktmp, &ga_ld);
-    NGA_Access(ga_tmp2, lo, hi, &ga_blockS,   &ga_ld);
-	for (int i = 0; i < nfuncs_row; i++)  
-	{
-        #pragma simd
-        for (int j = 0; j < nfuncs_col; j++)
-		{
-            ga_blockS[i * nfuncs_col + j]   = blockS[i * ld + j];
-			ga_blocktmp[i * nfuncs_col + j] = blocktmp[i * ld + j];
-		}
-    }
-	NGA_Release_update(ga_tmp,  lo, hi);
-	NGA_Release_update(ga_tmp2, lo, hi);
-	GA_Sync();
-    
-    GA_Dgemm('N', 'T', nbf, nbf, nbf, 1.0, ga_tmp2, ga_tmp, 0.0, pfock->ga_X);
-	
-	// Copy data from ga_X to bm_X
-	double *ga_X, *bm_X;
-	bm_X = pfock->bm_Xmat->mat_block;
-	NGA_Access(pfock->ga_X, lo, hi, &ga_X, &ga_ld);
-	for (int i = 0; i < nfuncs_row; i++)  
-	{
-        #pragma simd
-        for (int j = 0; j < nfuncs_col; j++)
-			bm_X[i * ld + j] = ga_X[i * nfuncs_col + j];
-    }
-	NGA_Release(pfock->ga_X, lo, hi);
 
-    GA_Destroy(ga_tmp);
-    GA_Destroy(ga_tmp2);
+	double t1 = MPI_Wtime();
+
+	Buzz_Matrix_t bm_Xmat = pfock->bm_Xmat;
+	int nrows_X = bm_Xmat->r_blklens[bm_Xmat->my_rowblk];
+	int ncols_X = bm_Xmat->c_blklens[bm_Xmat->my_colblk];
+	int X_row_s = bm_Xmat->r_displs[bm_Xmat->my_rowblk];
+	int X_col_s = bm_Xmat->c_displs[bm_Xmat->my_colblk];
+	double *tmp1_buf = (double*) _mm_malloc(nrows_X * nbf * sizeof(double), 64);
+	double *tmp2_buf = (double*) _mm_malloc(nbf * ncols_X * sizeof(double), 64);
+
+	Buzz_startBuzzMatrixReadOnlyEpoch(bm_tmp1);
+	Buzz_startBatchGet(bm_tmp1);
+	Buzz_addGetBlockRequest(bm_tmp1, X_row_s, nrows_X, 0, nbf, tmp1_buf, nbf);
+	Buzz_execBatchGet(bm_tmp1);
+	Buzz_stopBatchGet(bm_tmp1);
+	Buzz_stopBuzzMatrixReadOnlyEpoch(bm_tmp1);
+
+	Buzz_startBuzzMatrixReadOnlyEpoch(bm_tmp2);
+	Buzz_startBatchGet(bm_tmp2);
+	Buzz_addGetBlockRequest(bm_tmp2, X_col_s, ncols_X, 0, nbf, tmp2_buf, nbf);
+	Buzz_execBatchGet(bm_tmp2);
+	Buzz_stopBatchGet(bm_tmp2);
+	Buzz_stopBuzzMatrixReadOnlyEpoch(bm_tmp2);
+
+	double *bm_X_block = bm_Xmat->mat_block;
+	int bm_X_ld = bm_Xmat->ld_local;
+
+	Buzz_fillBuzzMatrix(bm_Xmat, &dzero);
+	cblas_dgemm(
+		CblasRowMajor, CblasNoTrans, CblasTrans,
+		nrows_X, ncols_X, nbf,
+		1.0,
+		tmp1_buf, nbf,
+		tmp2_buf, nbf,
+		0.0,
+		bm_X_block, bm_X_ld
+	);
+
+	_mm_free(tmp1_buf);
+	_mm_free(tmp2_buf);
+
+	double t2 = MPI_Wtime() - t1;
+	double tmax;
+	MPI_Reduce(&t2, &tmax, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
+	if (myrank == 0) printf("My pdgemm used time = %lf (s)\n", tmax);
+	
+	MPI_Barrier(MPI_COMM_WORLD);
+
 	Buzz_destroyBuzzMatrix(pfock->bm_tmp1);
 	Buzz_destroyBuzzMatrix(pfock->bm_tmp2);
 
@@ -1411,8 +1373,6 @@ PFockStatus_t PFock_createOvlMat(PFock_t pfock, BasisSet_t basis)
 
 PFockStatus_t PFock_destroyOvlMat(PFock_t pfock)
 {
-    GA_Destroy(pfock->ga_X);
-	
 	Buzz_destroyBuzzMatrix(pfock->bm_Xmat);
 	Buzz_destroyBuzzMatrix(pfock->bm_Smat);
 
