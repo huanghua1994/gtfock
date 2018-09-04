@@ -1,7 +1,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <mpi.h>
-//#include <macdecls.h>
+//#include <ga.h>
+#include <macdecls.h>
 #include <string.h>
 #include <sys/time.h>
 #include <omp.h>
@@ -327,15 +328,6 @@ static PFockStatus_t repartition_fock (PFock_t pfock)
 
 static PFockStatus_t create_GA (PFock_t pfock)
 {
-    int nbf;
-    int nprow;
-    int npcol;
-
-    // create global arrays
-    nbf = pfock->nbf;
-    nprow = pfock->nprow;
-    npcol = pfock->npcol;
-     
     int my_rank;
     MPI_Comm comm_world;
     MPI_Comm_rank(MPI_COMM_WORLD, &my_rank);
@@ -652,7 +644,6 @@ static void destroy_buffers (PFock_t pfock)
 PFockStatus_t init_GA(int nbf, int nprow, int npcol,
                       int num_dmat, int sizeheap, int sizestack)
 {
-	/*
     int maxrowsize = (nbf + nprow - 1)/nprow;
     int maxcolsize = (nbf + npcol - 1)/npcol;    
     int heap = num_dmat * 5 * maxrowsize * maxcolsize;
@@ -660,11 +651,10 @@ PFockStatus_t init_GA(int nbf, int nprow, int npcol,
     heap += sizeheap;
     stack += sizestack;
 
-    GA_Initialize();
-    if (!MA_init(C_DBL, heap, stack)) {
+    //GA_Initialize();
+    if (!MA_init(MT_DBL, heap, stack)) {
         return PFOCK_STATUS_INIT_FAILED;
     }
-	*/
     
     return PFOCK_STATUS_SUCCESS;
 }
@@ -892,7 +882,6 @@ PFockStatus_t PFock_destroy(PFock_t pfock)
     PFOCK_FREE(pfock->f_startind);
     PFOCK_FREE(pfock->s_startind);
 
-    //CInt_destroyERD(pfock->erd);    
     CInt_destroySIMINT(pfock->simint, 1);    
     clean_taskq(pfock);
     clean_screening(pfock);
@@ -1270,7 +1259,7 @@ PFockStatus_t PFock_createOvlMat(PFock_t pfock, BasisSet_t basis)
 
     int myrank;
     MPI_Comm_rank(MPI_COMM_WORLD, &myrank);    
-
+	
     // compute S
 	Buzz_fillBuzzMatrix(pfock->bm_Smat, &dzero);
 	mat    = pfock->bm_Smat->mat_block;
@@ -1299,7 +1288,6 @@ PFockStatus_t PFock_createOvlMat(PFock_t pfock, BasisSet_t basis)
 	int ld     = bm_tmp1->ld_local;
 	int lo1tmp = bm_tmp1->c_displs[bm_tmp1->my_colblk];
 
-    // int lo1tmp = lo[1];
     double *lambda_vector = (double *)malloc(nfuncs_col * sizeof (double));
     assert (lambda_vector != NULL);   
 
@@ -1315,7 +1303,7 @@ PFockStatus_t PFock_createOvlMat(PFock_t pfock, BasisSet_t basis)
             blockS[i * ld + j] = blocktmp[i * ld + j] * lambda_vector[j];
     }
     free(lambda_vector);
-
+	
 	double t1 = MPI_Wtime();
 
 	Buzz_Matrix_t bm_Xmat = pfock->bm_Xmat;
@@ -1361,8 +1349,8 @@ PFockStatus_t PFock_createOvlMat(PFock_t pfock, BasisSet_t basis)
 	double tmax;
 	MPI_Reduce(&t2, &tmax, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
 	if (myrank == 0) printf("My pdgemm used time = %lf (s)\n", tmax);
-	
 	MPI_Barrier(MPI_COMM_WORLD);
+
 
 	Buzz_destroyBuzzMatrix(pfock->bm_tmp1);
 	Buzz_destroyBuzzMatrix(pfock->bm_tmp2);

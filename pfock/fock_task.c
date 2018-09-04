@@ -6,6 +6,7 @@
 #include <math.h>
 #include <omp.h>
 #include <unistd.h>
+//#include <macdecls.h>
 #include <sys/time.h>
 
 #include "config.h"
