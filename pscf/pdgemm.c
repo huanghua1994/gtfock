@@ -10,7 +10,7 @@
 
 #include "pdgemm.h"
 
-
+/*
 #define P(mat,i,j,lda) ((mat)+(i)*(lda)+(j))
 static void copyMat (int m, int n, double *From, int ldfrom, double *To,
                      int ldto)
@@ -20,6 +20,13 @@ static void copyMat (int m, int n, double *From, int ldfrom, double *To,
     for (int c = 0; c < n; c++)
         for (int r = 0; r < m; r++)
             *P (To, r, c, ldto) = *P (From, r, c, ldfrom);
+}
+*/
+static void copyMat(int m, int n, double *From, int ldfrom, double *To, int ldto)
+{
+	#pragma omp parallel for
+	for (int r = 0; r < m; r++)
+		memcpy(To + r * ldto, From + r * ldfrom, sizeof(double) * n);
 }
 
 
@@ -42,8 +49,7 @@ void ReduceTo2D (int myrow, int mycol, int mygrd,
             MPI_Status status;
             int coords[3] = { myrow, mycol, mycol }, from;
             MPI_Cart_rank (comm_3D, coords, &from);
-            MPI_Recv (S, nrows * ncols, MPI_DOUBLE, from, 0, comm_3D,
-                      &status);
+            MPI_Recv (S, nrows * ncols, MPI_DOUBLE, from, 0, comm_3D, &status);
         }
     }
 
@@ -72,11 +78,15 @@ int pdgemm3D(int myrow, int mycol, int mygrd,
     double *S = tmpbuf->S;
     double *C = tmpbuf->C;
 
+	/*
     #pragma omp parallel for
     #pragma simd
     for (int i = 0; i < nrows0 * ncols0; i++) {
         A[i] = 0;
     }    
+    */
+    memset(A, 0, sizeof(double) * nrows0 * ncols0);
+
     copyMat(nrows, ncols, D_, ncols, A, ncols0);
 
     {
@@ -108,8 +118,7 @@ int pdgemm3D(int myrow, int mycol, int mygrd,
         }
 
         // 2.3. reduce S_i into a column i on plane i
-        MPI_Reduce(&S_i[0], S, nrows * ncols, MPI_DOUBLE, MPI_SUM, mygrd,
-                   comm_row);
+        MPI_Reduce(&S_i[0], S, nrows * ncols, MPI_DOUBLE, MPI_SUM, mygrd, comm_row);
 
         // 2.4. Reduce S to plane 0
         ReduceTo2D(myrow, mycol, mygrd, nrows, ncols, S, 0, comm_3D);
@@ -147,8 +156,7 @@ int pdgemm3D(int myrow, int mycol, int mygrd,
         }
         
         // 3.4. Reduce C_i into a column on plane i
-        MPI_Reduce(&C_i[0], C, nrows * ncols, MPI_DOUBLE, MPI_SUM, mygrd,
-                   comm_row);
+        MPI_Reduce(&C_i[0], C, nrows * ncols, MPI_DOUBLE, MPI_SUM, mygrd, comm_row);
 
         // 3.5. Reduce C to plane 0
         ReduceTo2D(myrow, mycol, mygrd, nrows, ncols, C, 0, comm_3D);
@@ -185,8 +193,8 @@ void pdgemm3D_2(int myrow, int mycol, int mygrd,
     double *C_block = tmpbuf->S;
     //(double *) _mm_malloc (sizeof (double) * nrows0 * ncols0, 64);
     memset(A_block, 0, sizeof (double) * nrows0 * ncols0);
-    copyMat(nrows, ncols, A_block_, ncols, A_block, ncols0);
     memset(B_block, 0, sizeof (double) * nrows0 * ncols0);
+    copyMat(nrows, ncols, A_block_, ncols, A_block, ncols0);
     copyMat(nrows, ncols, B_block_, ncols, B_block, ncols0);
 
     {
@@ -214,8 +222,7 @@ void pdgemm3D_2(int myrow, int mycol, int mygrd,
         }
         // spread / bcast the row block of B_block on each grid 
         copyMat(nrows, ncols, &B_block[0], ncols, &B_block_copy[0], ncols);
-        MPI_Bcast(&B_block_copy[0], nrows * ncols, MPI_DOUBLE, mygrd,
-                  comm_col);
+        MPI_Bcast(&B_block_copy[0], nrows * ncols, MPI_DOUBLE, mygrd, comm_col);
 
         // do local dgemm
         gettimeofday(&tv1, NULL);
@@ -228,8 +235,7 @@ void pdgemm3D_2(int myrow, int mycol, int mygrd,
                            (tv2.tv_usec - tv1.tv_usec) / 1000.0 / 1000.0;
         }
 
-        MPI_Reduce(&C_i[0], C_block, nrows * ncols, MPI_DOUBLE, MPI_SUM,
-                   mygrd, comm_row);
+        MPI_Reduce(&C_i[0], C_block, nrows * ncols, MPI_DOUBLE, MPI_SUM, mygrd, comm_row);
 
         ReduceTo2D(myrow, mycol, mygrd, nrows, ncols, C_block, 0, comm_3D);
     }
@@ -244,6 +250,7 @@ void allocate_tmpbuf (int nrows, int ncols, int *nr, int *nc,
     int ncols0 = nc[0], nrows0 = nr[0];
     assert (ncols0 >= ncols);
     assert (nrows0 >= nrows);
+    /*
     tmpbuf->A = (double *) _mm_malloc (sizeof (double) * nrows0 * ncols0, 64);
     tmpbuf->S = (double *) _mm_malloc (sizeof (double) * nrows0 * ncols0, 64);
     tmpbuf->C = (double *) _mm_malloc (sizeof (double) * nrows0 * ncols0, 64);
@@ -253,6 +260,14 @@ void allocate_tmpbuf (int nrows, int ncols, int *nr, int *nc,
         (double *) _mm_malloc (sizeof (double) * nrows0 * ncols0, 64);
     tmpbuf->C_i =
         (double *) _mm_malloc (sizeof (double) * nrows0 * ncols0, 64);
+    */
+	int block_size_align64b = (nrows0 * ncols0 + 7) / 8 * 8;
+    tmpbuf->A   = (double *) _mm_malloc(sizeof(double) * block_size_align64b * 6, 64);
+	tmpbuf->S   = tmpbuf->A   + block_size_align64b;
+	tmpbuf->C   = tmpbuf->S   + block_size_align64b;
+	tmpbuf->A_i = tmpbuf->C   + block_size_align64b;
+	tmpbuf->S_i = tmpbuf->A_i + block_size_align64b;
+	tmpbuf->C_i = tmpbuf->S_i + block_size_align64b;
 
     #pragma omp parallel for schedule(static)
     #pragma simd
@@ -270,10 +285,12 @@ void allocate_tmpbuf (int nrows, int ncols, int *nr, int *nc,
 
 void dealloc_tmpbuf (tmpbuf_t * tmpbuf)
 {
-    _mm_free (tmpbuf->A);
+	_mm_free(tmpbuf->A);
+	/*
     _mm_free (tmpbuf->S);
     _mm_free (tmpbuf->C);
     _mm_free (tmpbuf->A_i);
     _mm_free (tmpbuf->S_i);
     _mm_free (tmpbuf->C_i);
+    */
 }
