@@ -2,7 +2,8 @@
 #include <stdlib.h>
 #include <mpi.h>
 //#include <ga.h>
-#include <macdecls.h>
+//#include <macdecls.h>
+#include <malloc.h>
 #include <string.h>
 #include <sys/time.h>
 #include <omp.h>
@@ -640,36 +641,21 @@ static void destroy_buffers (PFock_t pfock)
     PFOCK_FREE(pfock->F3);  
 }
 
-
-PFockStatus_t init_GA(int nbf, int nprow, int npcol,
-                      int num_dmat, int sizeheap, int sizestack)
+void init_mallopt()
 {
-    int maxrowsize = (nbf + nprow - 1)/nprow;
-    int maxcolsize = (nbf + npcol - 1)/npcol;    
-    int heap = num_dmat * 5 * maxrowsize * maxcolsize;
-    int stack = heap;
-    heap += sizeheap;
-    stack += sizestack;
-
-    //GA_Initialize();
-    if (!MA_init(MT_DBL, heap, stack)) {
-        return PFOCK_STATUS_INIT_FAILED;
-    }
-    
-    return PFOCK_STATUS_SUCCESS;
+    // Disable memory mapped malloc, previously done in MA_init() for caching page 
+    // registrations required in MPI RMA on InfiniBand, Cray machines and Omni-Path
+    mallopt(M_MMAP_MAX, 0);
+    mallopt(M_TRIM_THRESHOLD, -1);
 }
-
-
-void finalize_GA(void)
-{    
-    //GA_Terminate();
-}
-
 
 PFockStatus_t PFock_create(BasisSet_t basis, int nprow, int npcol, int ntasks,
                            double tolscr, int max_numdmat, int symm,
                            PFock_t *_pfock)
 {
+	// Init malloc optimization
+	init_mallopt();
+	
     // allocate pfock
     PFock_t pfock = (PFock_t)PFOCK_MALLOC(sizeof(struct PFock));    
     if (NULL == pfock) {
@@ -727,10 +713,7 @@ PFockStatus_t PFock_create(BasisSet_t basis, int nprow, int npcol, int ntasks,
         pfock->max_numdmat = max_numdmat;
         pfock->max_numdmat2 = (pfock->nosymm + 1) * max_numdmat;
     }
-          
-    // init global arrays
-    init_GA(pfock->nbf, nprow, npcol, pfock->max_numdmat2, 0, 0);
-        
+    
     // set tasks
     int minnshells = (nprow > npcol ? nprow : npcol);
     minnshells = pfock->nshells/minnshells;
