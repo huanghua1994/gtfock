@@ -9,6 +9,7 @@
 //#include <macdecls.h>
 #include <sys/time.h>
 
+#include "pfock.h"
 #include "config.h"
 #include "taskq.h"
 #include "fock_task.h"
@@ -39,6 +40,16 @@ double *F_M_band_blocks;     // Thread-private buffer for F_MP and F_MQ blocks w
 double *F_N_band_blocks;     // Thread-private buffer for F_NP and F_NQ blocks with the same N
 int    *visited_Mpairs;      // Flags for marking if (M, i) is updated 
 int    *visited_Npairs;      // Flags for marking if (N, i) is updated 
+
+// Fixed pointers & values
+BasisSet_t basis;
+SIMINT_t   simint;
+int    ncpu_f, num_dmat, sizeX1, sizeX2, sizeX3, ldX1, ldX2, ldX3;
+int    *shellptr, *shellid, *shellrid, *f_startind;
+int    *rowpos, *colpos, *rowptr, *colptr;
+int    *blkrowptr_sh, *blkcolptr_sh;
+double tolscr2, *shellvalue;
+double *D_mat, *F1, *nitl, *nsq;
 
 #include "update_F.h"
 
@@ -113,33 +124,51 @@ void update_F_with_KetShellPairList(
     }
 }
 
-void init_block_buf(int _nbf, int _nshells, int *f_startind, int num_dmat, BasisSet_t basis, int _maxcolfuncs)
+void init_block_buf(BasisSet_t _basis, PFock_t pfock)
 {
-    if (num_dmat != 1)
+    if (pfock->num_dmat != 1)
     {
         printf("  FATAL: currently JKD blocking only supports num_dmat==1 !! Please check scf.c\n");
         assert(num_dmat == 1);
     }
 
-    if (nbf > 0)
-    {
-        if ((nbf != _nbf) || (nshells != _nshells))
-        {
-            printf("Old nbf, nshells != new nbf, nshells !!\n");
-            assert(nbf == _nbf);
-            assert(nshells == _nshells);
-        }
-        return;
-    }
+    if (update_F_buf_size > 0) return;
     
     MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
     
-    nbf     = _nbf;
-    nshells = _nshells;
-    nsp     = nshells * nshells;
-    nbf2    = nbf * nbf;
-    maxcolfuncs = _maxcolfuncs;
-    nthreads = omp_get_max_threads();
+    // Copy fixed pointers
+    basis        = _basis;
+    simint       = pfock->simint;
+    ncpu_f       = pfock->ncpu_f;
+    num_dmat     = pfock->num_dmat2;
+    shellptr     = pfock->shellptr;
+    shellvalue   = pfock->shellvalue;
+    shellid      = pfock->shellid;
+    shellrid     = pfock->shellrid;
+    f_startind   = pfock->f_startind;
+    rowpos       = pfock->rowpos;
+    colpos       = pfock->colpos;
+    rowptr       = pfock->rowptr;
+    colptr       = pfock->colptr;
+    tolscr2      = pfock->tolscr2;
+    nbf          = pfock->nbf;
+    nshells      = pfock->nshells;
+    nsp          = nshells * nshells;
+    nbf2         = nbf * nbf;
+    maxcolfuncs  = pfock->maxcolfuncs;
+    nthreads     = pfock->nthreads;
+    D_mat        = pfock->D_mat;
+    F1           = pfock->F1;
+    nitl         = &pfock->uitl;
+    nsq          = &pfock->usq;
+    sizeX1       = pfock->sizeX1;
+    sizeX2       = pfock->sizeX2;
+    sizeX3       = pfock->sizeX3;
+    ldX1         = pfock->maxrowsize;
+    ldX2         = pfock->maxcolsize;
+    ldX3         = pfock->maxcolsize;
+    blkrowptr_sh = pfock->blkrowptr_sh;
+    blkcolptr_sh = pfock->blkcolptr_sh;
     
     // Decide how many copies of F_PQ_blocks to use
     #ifdef DUP_F_PQ_BUF
@@ -319,26 +348,20 @@ void pack_D_mark_JK_with_KetShellPairList(
 // for SCF, J = K
 // Batched ERI version
 void fock_task(
-    BasisSet_t basis, SIMINT_t simint, int ncpu_f, int num_dmat,
-    int *shellptr, double *shellvalue,
-    int *shellid, int *shellrid, int *f_startind,
-    int *rowpos, int *colpos, int *rowptr, int *colptr,
-    double tolscr2, int startrow, int startcol,
-    int startM, int endM, int startP, int endP,
-    double *D_mat, 
-    double *F1, double *F2, double *F3,
-    int ldX1, int ldX2, int ldX3,
-    int ldX4, int ldX5, int ldX6,
-    int sizeX1, int sizeX2, int sizeX3,
-    int sizeX4, int sizeX5, int sizeX6,
-    double *nitl, double *nsq, 
-    int _nbf, int _nshells, int repack_D
+    int nblks_col, int sblk_row, int sblk_col, 
+    int task, int startrow, int startcol, int repack_D
 )
 {
+    int rowid   = task / nblks_col;
+    int colid   = task % nblks_col;
+    int startM  = blkrowptr_sh[sblk_row + rowid];
+    int endM    = blkrowptr_sh[sblk_row + rowid + 1] - 1;
+    int startP  = blkcolptr_sh[sblk_col + colid];
+    int endP    = blkcolptr_sh[sblk_col + colid + 1] - 1;
     int startMN = shellptr[startM];
-    int endMN = shellptr[endM + 1];
+    int endMN   = shellptr[endM + 1];
     int startPQ = shellptr[startP];
-    int endPQ = shellptr[endP + 1];
+    int endPQ   = shellptr[endP + 1];
     
     // For mapping the write position of F4, F5, F6 to F3
     int _iX3M = rowpos[startrow];
@@ -350,15 +373,15 @@ void fock_task(
     
     #pragma omp parallel
     {
-        int nt = omp_get_thread_num();
+        int tid = omp_get_thread_num();
         double mynsq  = 0.0;
         double mynitl = 0.0;
         double st, et;
         
-        double *thread_F_M_band_blocks = F_M_band_blocks + nt * nbf * max_dim;
-        double *thread_F_N_band_blocks = F_N_band_blocks + nt * nbf * max_dim;
-        int    *thread_visited_Mpairs  = visited_Mpairs + nt * nshells;
-        int    *thread_visited_Npairs  = visited_Npairs + nt * nshells;
+        double *thread_F_M_band_blocks = F_M_band_blocks + tid * nbf * max_dim;
+        double *thread_F_N_band_blocks = F_N_band_blocks + tid * nbf * max_dim;
+        int    *thread_visited_Mpairs  = visited_Mpairs  + tid * nshells;
+        int    *thread_visited_Npairs  = visited_Npairs  + tid * nshells;
         
         if (repack_D)
         {
@@ -399,7 +422,7 @@ void fock_task(
             int flag1 = (value1 < 0.0) ? 1 : 0;
             
             //memset(F_MN_blocks + mat_block_ptr[M * nshells + N], 0, sizeof(double) * dimM * dimN);
-            double *thread_MN_buf = update_F_buf + nt * update_F_buf_size;
+            double *thread_MN_buf = update_F_buf + tid * update_F_buf_size;
             memset(thread_MN_buf, 0, sizeof(double) * dimM * dimN);
             
             for (int j = startPQ; j < endPQ; j++)
@@ -414,8 +437,7 @@ void fock_task(
                     (N < Q && (N + Q) % 2 == 0)))
                     continue;
                 double value2 = shellvalue[j];
-                //int dimP = f_startind[P + 1] - f_startind[P];
-                //int dimQ = f_startind[Q + 1] - f_startind[Q];
+
                 int dimP = shell_bf_num[P];
                 int dimQ = shell_bf_num[Q];
                 int iX2P = f_startind[P] - f_startind[startcol];
@@ -426,10 +448,7 @@ void fock_task(
                 int iMP0 = iX3M * ldX3 + iX3P;
                 int iMQ0 = iX3M * ldX3 + iXQ;
                 int iNP0 = iXN  * ldX3 + iX3P;  
-                
-                //int iMP  = iX1M * ldX4 + iX2P;
-                //int iMQ  = iX1M * ldX5 + iXQ;
-                //int iNP  = iXN  * ldX6 + iX2P;
+
                 int iMP_F3 = (iX1M * ldX3 + iX2P) + (_iX3M * ldX3 + _iX3P);
                 int iNP_F3 = (iXN  * ldX3 + iX2P) + _iX3P;
                 int iMQ_F3 = (iX1M * ldX3 + iXQ)  + (_iX3M * ldX3);
@@ -464,12 +483,12 @@ void fock_task(
                         pack_D_mark_JK_with_KetShellPairList(
                             M, N, npairs, target_shellpair_list,
                             //D1, D2, D3, ldX1, ldX2, ldX3, 
-                            D_mat, f_startind, _nbf, 
+                            D_mat, f_startind, nbf, 
                             thread_visited_Mpairs, thread_visited_Npairs
                         );
                         
                         CInt_computeShellQuartetBatch_SIMINT(
-                            simint, nt,
+                            simint, tid,
                             thread_quartet_lists->M, 
                             thread_quartet_lists->N, 
                             target_shellpair_list->P_list,
@@ -482,12 +501,12 @@ void fock_task(
                         {
                             st = CInt_get_walltime_sec();
                             update_F_with_KetShellPairList(
-                                nt, num_dmat, thread_batch_integrals, thread_batch_nints,
+                                tid, num_dmat, thread_batch_integrals, thread_batch_nints,
                                 npairs, M, N, target_shellpair_list,
                                 thread_F_M_band_blocks, thread_F_N_band_blocks
                             );
                             et = CInt_get_walltime_sec();
-                            if (nt == 0) CInt_SIMINT_addupdateFtimer(simint, et - st);
+                            if (tid == 0) CInt_SIMINT_addupdateFtimer(simint, et - st);
                         }
                         
                         // Ket shellpair list is processed, reset it
@@ -510,12 +529,12 @@ void fock_task(
                     pack_D_mark_JK_with_KetShellPairList(
                         M, N, npairs, target_shellpair_list,
                         //D1, D2, D3, ldX1, ldX2, ldX3, 
-                        D_mat, f_startind, _nbf, 
+                        D_mat, f_startind, nbf, 
                         thread_visited_Mpairs, thread_visited_Npairs
                     );
                     
                     CInt_computeShellQuartetBatch_SIMINT(
-                        simint, nt,
+                        simint, tid,
                         thread_quartet_lists->M, 
                         thread_quartet_lists->N, 
                         target_shellpair_list->P_list,
@@ -528,12 +547,12 @@ void fock_task(
                     {
                         st = CInt_get_walltime_sec();
                         update_F_with_KetShellPairList(
-                            nt, num_dmat, thread_batch_integrals, thread_batch_nints, 
+                            tid, num_dmat, thread_batch_integrals, thread_batch_nints, 
                             npairs, M, N, target_shellpair_list,
                             thread_F_M_band_blocks, thread_F_N_band_blocks
                         );
                         et = CInt_get_walltime_sec();
-                        if (nt == 0) CInt_SIMINT_addupdateFtimer(simint, et - st);
+                        if (tid == 0) CInt_SIMINT_addupdateFtimer(simint, et - st);
                     }
                     
                     // Ket shellpair list is processed, reset it
@@ -565,7 +584,7 @@ void fock_task(
                 }
             }
             et = CInt_get_walltime_sec();
-            if (nt == 0) CInt_SIMINT_addupdateFtimer(simint, et - st);
+            if (tid == 0) CInt_SIMINT_addupdateFtimer(simint, et - st);
             
         }  // for (int i = startMN; i < endMN; i++)
 

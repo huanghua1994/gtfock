@@ -354,35 +354,35 @@ static PFockStatus_t create_GA (PFock_t pfock)
         pfock->rowptr_f, pfock->colptr_f, 
         1, 0
     );
-	Buzz_createBuzzMatrix(
+    Buzz_createBuzzMatrix(
         &pfock->bm_Hmat, comm_world, MPI_DOUBLE, 8,
         my_rank, pfock->nbf, pfock->nbf, 
         pfock->nprow, pfock->npcol,
         pfock->rowptr_f, pfock->colptr_f, 
         1, 0
     );
-	Buzz_createBuzzMatrix(
+    Buzz_createBuzzMatrix(
         &pfock->bm_Smat, comm_world, MPI_DOUBLE, 8,
         my_rank, pfock->nbf, pfock->nbf, 
         pfock->nprow, pfock->npcol,
         pfock->rowptr_f, pfock->colptr_f, 
         1, 0
     );
-	Buzz_createBuzzMatrix(
+    Buzz_createBuzzMatrix(
         &pfock->bm_Xmat, comm_world, MPI_DOUBLE, 8,
         my_rank, pfock->nbf, pfock->nbf, 
         pfock->nprow, pfock->npcol,
         pfock->rowptr_f, pfock->colptr_f, 
         1, 0
     );
-	Buzz_createBuzzMatrix(
+    Buzz_createBuzzMatrix(
         &pfock->bm_tmp1, comm_world, MPI_DOUBLE, 8,
         my_rank, pfock->nbf, pfock->nbf, 
         pfock->nprow, pfock->npcol,
         pfock->rowptr_f, pfock->colptr_f, 
         1, 0
     );
-	Buzz_createBuzzMatrix(
+    Buzz_createBuzzMatrix(
         &pfock->bm_tmp2, comm_world, MPI_DOUBLE, 8,
         my_rank, pfock->nbf, pfock->nbf, 
         pfock->nprow, pfock->npcol,
@@ -400,8 +400,8 @@ static PFockStatus_t create_GA (PFock_t pfock)
 static void destroy_GA(PFock_t pfock)
 {
     Buzz_destroyBuzzMatrix(pfock->bm_Dmat);
-	Buzz_destroyBuzzMatrix(pfock->bm_Fmat);
-	Buzz_destroyBuzzMatrix(pfock->bm_Kmat);
+    Buzz_destroyBuzzMatrix(pfock->bm_Fmat);
+    Buzz_destroyBuzzMatrix(pfock->bm_Kmat);
 }
 
 
@@ -653,9 +653,9 @@ PFockStatus_t PFock_create(BasisSet_t basis, int nprow, int npcol, int ntasks,
                            double tolscr, int max_numdmat, int symm,
                            PFock_t *_pfock)
 {
-	// Init malloc optimization
-	init_mallopt();
-	
+    // Init malloc optimization
+    init_mallopt();
+    
     // allocate pfock
     PFock_t pfock = (PFock_t)PFOCK_MALLOC(sizeof(struct PFock));    
     if (NULL == pfock) {
@@ -956,17 +956,14 @@ PFockStatus_t PFock_computeFock(BasisSet_t basis, PFock_t pfock)
     int sizeX1 = pfock->sizeX1;
     int sizeX2 = pfock->sizeX2;
     int sizeX3 = pfock->sizeX3;
-    int sizeX4 = pfock->sizeX4;    
-    int sizeX5 = pfock->sizeX5;
-    int sizeX6 = pfock->sizeX6;
     double *F1 = pfock->F1;
     double *F2 = pfock->F2;
     double *F3 = pfock->F3;
     int maxrowsize  = pfock->maxrowsize;
     int maxcolfuncs = pfock->maxcolfuncs;
     int maxcolsize  = pfock->maxcolsize;
-    int ldX1 = maxrowsize;
-    int ldX2 = maxcolsize;
+    //int ldX1 = maxrowsize;
+    //int ldX2 = maxcolsize;
     int ldX3 = maxcolsize;
     int ldX4 = maxcolfuncs;
     int ldX5 = maxcolsize;
@@ -974,9 +971,7 @@ PFockStatus_t PFock_computeFock(BasisSet_t basis, PFock_t pfock)
     double dzero = 0.0;
     
     // Initialize buffers used in fock_task()
-    init_block_buf(pfock->nbf, pfock->nshells, pfock->f_startind, pfock->num_dmat, basis, maxcolfuncs);
-
-    double *D_mat = pfock->D_mat;
+    init_block_buf(basis, pfock);
 
     gettimeofday (&tv1, NULL);    
     gettimeofday (&tv3, NULL);
@@ -1010,28 +1005,11 @@ PFockStatus_t PFock_computeFock(BasisSet_t basis, PFock_t pfock)
     int repack_D = 1;
     while ((task = taskq_next (pfock, myrow, mycol, 1)) < pfock->ntasks) 
     {
-        int rowid  = task / pfock->nblks_col;
-        int colid  = task % pfock->nblks_col;
-        int startM = pfock->blkrowptr_sh[pfock->sblk_row + rowid];
-        int endM   = pfock->blkrowptr_sh[pfock->sblk_row + rowid + 1] - 1;
-        int startP = pfock->blkcolptr_sh[pfock->sblk_col + colid];
-        int endP   = pfock->blkcolptr_sh[pfock->sblk_col + colid + 1] - 1;
         gettimeofday (&tv3, NULL);       
-        fock_task(basis, pfock->simint, pfock->ncpu_f, pfock->num_dmat2,
-                  pfock->shellptr, pfock->shellvalue,
-                  pfock->shellid, pfock->shellrid,
-                  pfock->f_startind,
-                  pfock->rowpos, pfock->colpos,
-                  pfock->rowptr, pfock->colptr,
-                  pfock->tolscr2,
-                  my_sshellrow, my_sshellcol,
-                  startM, endM, startP, endP,
-                  D_mat, F1, F2, F3,
-                  ldX1, ldX2, ldX3, ldX4, ldX5, ldX6,
-                  sizeX1, sizeX2, sizeX3,
-                  sizeX4, sizeX5, sizeX6,
-                  &(pfock->uitl), &(pfock->usq), 
-                  pfock->nbf, pfock->nshells, repack_D);
+        fock_task(
+            pfock->nblks_col, pfock->sblk_row, pfock->sblk_col,
+            task, my_sshellrow, my_sshellcol, repack_D
+        );
         gettimeofday (&tv4, NULL);
         repack_D = 0;
         pfock->timecomp += (tv4.tv_sec - tv3.tv_sec) +
@@ -1085,29 +1063,13 @@ PFockStatus_t PFock_computeFock(BasisSet_t basis, PFock_t pfock)
             gettimeofday (&tv4, NULL);
             pfock->timeinit += (tv4.tv_sec - tv3.tv_sec) +
                    (tv4.tv_usec - tv3.tv_usec) / 1000.0 / 1000.0;
-            int rowid  = task/vnblks_col;
-            int colid  = task%vnblks_col;
             
             // Compute stolen task
-            int startM = pfock->blkrowptr_sh[vsblk_row + rowid];
-            int endM   = pfock->blkrowptr_sh[vsblk_row + rowid + 1] - 1;
-            int startP = pfock->blkcolptr_sh[vsblk_col + colid];
-            int endP   = pfock->blkcolptr_sh[vsblk_col + colid + 1] - 1;
-
             gettimeofday (&tv3, NULL);
-            fock_task(basis, pfock->simint, pfock->ncpu_f, pfock->num_dmat2,
-                      pfock->shellptr, pfock->shellvalue,
-                      pfock->shellid, pfock->shellrid,
-                      pfock->f_startind,
-                      pfock->rowpos, pfock->colpos,
-                      pfock->rowptr, pfock->colptr,
-                      pfock->tolscr2,
-                      vsshellrow, vsshellcol, startM, endM, startP, endP,
-                      D_mat, F1, F2, F3, 
-                      ldX1, ldX2, ldX3, ldX4, ldX5, ldX6,
-                      sizeX1, sizeX2, sizeX3, sizeX4, sizeX5, sizeX6,
-                      &(pfock->uitl), &(pfock->usq), 
-                      pfock->nbf, pfock->nshells, 1 - stealed);
+            fock_task(
+                vnblks_col, vsblk_row, vsblk_col,
+                task, vsshellrow, vsshellcol, 1 - stealed
+            );
             gettimeofday (&tv4, NULL);
             pfock->timecomp += (tv4.tv_sec - tv3.tv_sec) +
                         (tv4.tv_usec - tv3.tv_usec) / 1000.0 / 1000.0;
@@ -1198,12 +1160,12 @@ PFockStatus_t PFock_createCoreHMat(PFock_t pfock, BasisSet_t basis)
 
     int myrank;
     MPI_Comm_rank (MPI_COMM_WORLD, &myrank);    
-	Buzz_fillBuzzMatrix(pfock->bm_Hmat, &dzero);
-	mat    = pfock->bm_Hmat->mat_block;
-	stride = pfock->bm_Hmat->ld_local;
+    Buzz_fillBuzzMatrix(pfock->bm_Hmat, &dzero);
+    mat    = pfock->bm_Hmat->mat_block;
+    stride = pfock->bm_Hmat->ld_local;
     compute_H(pfock, basis, pfock->sshell_row, pfock->eshell_row,
               pfock->sshell_col, pfock->eshell_col, stride, mat);
-	MPI_Barrier(MPI_COMM_WORLD);
+    MPI_Barrier(MPI_COMM_WORLD);
     
     return PFOCK_STATUS_SUCCESS;
 }
@@ -1222,11 +1184,11 @@ PFockStatus_t PFock_getCoreHMat(PFock_t pfock, int rowstart, int rowend,
 {
     Buzz_startBatchGet(pfock->bm_Hmat);
     Buzz_addGetBlockRequest(
-		pfock->bm_Hmat, 
-		rowstart, rowend - rowstart + 1,
-		colstart, colend - colstart + 1,
-		mat, stride
-	);
+        pfock->bm_Hmat, 
+        rowstart, rowend - rowstart + 1,
+        colstart, colend - colstart + 1,
+        mat, stride
+    );
     Buzz_execBatchGet(pfock->bm_Hmat);
     Buzz_stopBatchGet(pfock->bm_Hmat);
 
@@ -1242,34 +1204,34 @@ PFockStatus_t PFock_createOvlMat(PFock_t pfock, BasisSet_t basis)
 
     int myrank;
     MPI_Comm_rank(MPI_COMM_WORLD, &myrank);    
-	
+    
     // compute S
-	Buzz_fillBuzzMatrix(pfock->bm_Smat, &dzero);
-	mat    = pfock->bm_Smat->mat_block;
-	stride = pfock->bm_Smat->ld_local;
+    Buzz_fillBuzzMatrix(pfock->bm_Smat, &dzero);
+    mat    = pfock->bm_Smat->mat_block;
+    stride = pfock->bm_Smat->ld_local;
     compute_S(pfock, basis, pfock->sshell_row, pfock->eshell_row,
               pfock->sshell_col, pfock->eshell_col, stride, mat);
-	MPI_Barrier(MPI_COMM_WORLD);
+    MPI_Barrier(MPI_COMM_WORLD);
     
     // compute X         
     int nbf = CInt_getNumFuncs(basis);
     double *eval = (double *)malloc(nbf * sizeof (double));
     if (NULL == eval) 
-	{
+    {
         PFOCK_PRINTF (1, "Memory allocation failed\n");
         return PFOCK_STATUS_ALLOC_FAILED;        
     }
     
-	my_peig(pfock->bm_Smat, pfock->bm_tmp1, nbf, pfock->nprow, pfock->npcol, eval);
-	
-	Buzz_Matrix_t bm_tmp1 = pfock->bm_tmp1;
-	Buzz_Matrix_t bm_tmp2 = pfock->bm_tmp2;
-	double *blocktmp = bm_tmp1->mat_block;
-	double *blockS   = bm_tmp2->mat_block;
-	int nfuncs_row   = bm_tmp1->r_blklens[bm_tmp1->my_rowblk];
-	int nfuncs_col   = bm_tmp1->c_blklens[bm_tmp1->my_colblk];
-	int ld     = bm_tmp1->ld_local;
-	int lo1tmp = bm_tmp1->c_displs[bm_tmp1->my_colblk];
+    my_peig(pfock->bm_Smat, pfock->bm_tmp1, nbf, pfock->nprow, pfock->npcol, eval);
+    
+    Buzz_Matrix_t bm_tmp1 = pfock->bm_tmp1;
+    Buzz_Matrix_t bm_tmp2 = pfock->bm_tmp2;
+    double *blocktmp = bm_tmp1->mat_block;
+    double *blockS   = bm_tmp2->mat_block;
+    int nfuncs_row   = bm_tmp1->r_blklens[bm_tmp1->my_rowblk];
+    int nfuncs_col   = bm_tmp1->c_blklens[bm_tmp1->my_colblk];
+    int ld     = bm_tmp1->ld_local;
+    int lo1tmp = bm_tmp1->c_displs[bm_tmp1->my_colblk];
 
     double *lambda_vector = (double *)malloc(nfuncs_col * sizeof (double));
     assert (lambda_vector != NULL);   
@@ -1278,65 +1240,65 @@ PFockStatus_t PFock_createOvlMat(PFock_t pfock, BasisSet_t basis)
     for (int j = 0; j < nfuncs_col; j++) 
         lambda_vector[j] = 1.0 / sqrt(eval[j + lo1tmp]);
     free(eval);
-	
+    
     for (int i = 0; i < nfuncs_row; i++)  
-	{
+    {
         #pragma simd
         for (int j = 0; j < nfuncs_col; j++) 
             blockS[i * ld + j] = blocktmp[i * ld + j] * lambda_vector[j];
     }
     free(lambda_vector);
-	
-	double t1 = MPI_Wtime();
+    
+    double t1 = MPI_Wtime();
 
-	Buzz_Matrix_t bm_Xmat = pfock->bm_Xmat;
-	int nrows_X = bm_Xmat->r_blklens[bm_Xmat->my_rowblk];
-	int ncols_X = bm_Xmat->c_blklens[bm_Xmat->my_colblk];
-	int X_row_s = bm_Xmat->r_displs[bm_Xmat->my_rowblk];
-	int X_col_s = bm_Xmat->c_displs[bm_Xmat->my_colblk];
-	double *tmp1_buf = (double*) _mm_malloc(nrows_X * nbf * sizeof(double), 64);
-	double *tmp2_buf = (double*) _mm_malloc(nbf * ncols_X * sizeof(double), 64);
+    Buzz_Matrix_t bm_Xmat = pfock->bm_Xmat;
+    int nrows_X = bm_Xmat->r_blklens[bm_Xmat->my_rowblk];
+    int ncols_X = bm_Xmat->c_blklens[bm_Xmat->my_colblk];
+    int X_row_s = bm_Xmat->r_displs[bm_Xmat->my_rowblk];
+    int X_col_s = bm_Xmat->c_displs[bm_Xmat->my_colblk];
+    double *tmp1_buf = (double*) _mm_malloc(nrows_X * nbf * sizeof(double), 64);
+    double *tmp2_buf = (double*) _mm_malloc(nbf * ncols_X * sizeof(double), 64);
 
-	Buzz_startBuzzMatrixReadOnlyEpoch(bm_tmp1);
-	Buzz_startBatchGet(bm_tmp1);
-	Buzz_addGetBlockRequest(bm_tmp1, X_row_s, nrows_X, 0, nbf, tmp1_buf, nbf);
-	Buzz_execBatchGet(bm_tmp1);
-	Buzz_stopBatchGet(bm_tmp1);
-	Buzz_stopBuzzMatrixReadOnlyEpoch(bm_tmp1);
+    Buzz_startBuzzMatrixReadOnlyEpoch(bm_tmp1);
+    Buzz_startBatchGet(bm_tmp1);
+    Buzz_addGetBlockRequest(bm_tmp1, X_row_s, nrows_X, 0, nbf, tmp1_buf, nbf);
+    Buzz_execBatchGet(bm_tmp1);
+    Buzz_stopBatchGet(bm_tmp1);
+    Buzz_stopBuzzMatrixReadOnlyEpoch(bm_tmp1);
 
-	Buzz_startBuzzMatrixReadOnlyEpoch(bm_tmp2);
-	Buzz_startBatchGet(bm_tmp2);
-	Buzz_addGetBlockRequest(bm_tmp2, X_col_s, ncols_X, 0, nbf, tmp2_buf, nbf);
-	Buzz_execBatchGet(bm_tmp2);
-	Buzz_stopBatchGet(bm_tmp2);
-	Buzz_stopBuzzMatrixReadOnlyEpoch(bm_tmp2);
+    Buzz_startBuzzMatrixReadOnlyEpoch(bm_tmp2);
+    Buzz_startBatchGet(bm_tmp2);
+    Buzz_addGetBlockRequest(bm_tmp2, X_col_s, ncols_X, 0, nbf, tmp2_buf, nbf);
+    Buzz_execBatchGet(bm_tmp2);
+    Buzz_stopBatchGet(bm_tmp2);
+    Buzz_stopBuzzMatrixReadOnlyEpoch(bm_tmp2);
 
-	double *bm_X_block = bm_Xmat->mat_block;
-	int bm_X_ld = bm_Xmat->ld_local;
+    double *bm_X_block = bm_Xmat->mat_block;
+    int bm_X_ld = bm_Xmat->ld_local;
 
-	Buzz_fillBuzzMatrix(bm_Xmat, &dzero);
-	cblas_dgemm(
-		CblasRowMajor, CblasNoTrans, CblasTrans,
-		nrows_X, ncols_X, nbf,
-		1.0,
-		tmp1_buf, nbf,
-		tmp2_buf, nbf,
-		0.0,
-		bm_X_block, bm_X_ld
-	);
+    Buzz_fillBuzzMatrix(bm_Xmat, &dzero);
+    cblas_dgemm(
+        CblasRowMajor, CblasNoTrans, CblasTrans,
+        nrows_X, ncols_X, nbf,
+        1.0,
+        tmp1_buf, nbf,
+        tmp2_buf, nbf,
+        0.0,
+        bm_X_block, bm_X_ld
+    );
 
-	_mm_free(tmp1_buf);
-	_mm_free(tmp2_buf);
+    _mm_free(tmp1_buf);
+    _mm_free(tmp2_buf);
 
-	double t2 = MPI_Wtime() - t1;
-	double tmax;
-	MPI_Reduce(&t2, &tmax, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
-	if (myrank == 0) printf("My pdgemm used time = %lf (s)\n", tmax);
-	MPI_Barrier(MPI_COMM_WORLD);
+    double t2 = MPI_Wtime() - t1;
+    double tmax;
+    MPI_Reduce(&t2, &tmax, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
+    if (myrank == 0) printf("My pdgemm used time = %lf (s)\n", tmax);
+    MPI_Barrier(MPI_COMM_WORLD);
 
 
-	Buzz_destroyBuzzMatrix(pfock->bm_tmp1);
-	Buzz_destroyBuzzMatrix(pfock->bm_tmp2);
+    Buzz_destroyBuzzMatrix(pfock->bm_tmp1);
+    Buzz_destroyBuzzMatrix(pfock->bm_tmp2);
 
     return PFOCK_STATUS_SUCCESS;
 }
@@ -1344,8 +1306,8 @@ PFockStatus_t PFock_createOvlMat(PFock_t pfock, BasisSet_t basis)
 
 PFockStatus_t PFock_destroyOvlMat(PFock_t pfock)
 {
-	Buzz_destroyBuzzMatrix(pfock->bm_Xmat);
-	Buzz_destroyBuzzMatrix(pfock->bm_Smat);
+    Buzz_destroyBuzzMatrix(pfock->bm_Xmat);
+    Buzz_destroyBuzzMatrix(pfock->bm_Smat);
 
     return PFOCK_STATUS_SUCCESS;    
 }
@@ -1357,11 +1319,11 @@ PFockStatus_t PFock_getOvlMat(PFock_t pfock, int rowstart, int rowend,
 {
     Buzz_startBatchGet(pfock->bm_Smat);
     Buzz_addGetBlockRequest(
-		pfock->bm_Smat, 
-		rowstart, rowend - rowstart + 1,
-		colstart, colend - colstart + 1,
-		mat, stride
-	);
+        pfock->bm_Smat, 
+        rowstart, rowend - rowstart + 1,
+        colstart, colend - colstart + 1,
+        mat, stride
+    );
     Buzz_execBatchGet(pfock->bm_Smat);
     Buzz_stopBatchGet(pfock->bm_Smat);
 
@@ -1375,14 +1337,14 @@ PFockStatus_t PFock_getOvlMat2(PFock_t pfock, int rowstart, int rowend,
 {
     Buzz_startBatchGet(pfock->bm_Xmat);
     Buzz_addGetBlockRequest(
-		pfock->bm_Xmat, 
-		rowstart, rowend - rowstart + 1,
-		colstart, colend - colstart + 1,
-		mat, stride
-	);
+        pfock->bm_Xmat, 
+        rowstart, rowend - rowstart + 1,
+        colstart, colend - colstart + 1,
+        mat, stride
+    );
     Buzz_execBatchGet(pfock->bm_Xmat);
     Buzz_stopBatchGet(pfock->bm_Xmat);
-	
+    
     return PFOCK_STATUS_SUCCESS;    
 }
 
