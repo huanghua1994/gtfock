@@ -255,6 +255,15 @@ void destroy_purif (purif_t * purif)
 }
 
 
+static double get_wtime_sec()
+{
+    double sec;
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    sec = tv.tv_sec + (double) tv.tv_usec / 1000000.0;
+    return sec;
+}
+
 int compute_purification(purif_t * purif, double *F_block, double *D_block)
 {
     struct timeval tv1;
@@ -376,93 +385,76 @@ int compute_purification(purif_t * purif, double *F_block, double *D_block)
 
         // McWeeny purification
         // convergence appears slow at first, before accelerating at end
-        for (it = 0; it < MAX_PURF_ITERS; it++) {
-            gettimeofday(&tv1, NULL);
-            double tmp_time;
+        double dgemm_time, pdgemm_s, pdgemm_e, tr_s, tr_e, errnorm;
+        double tr[2], tr_local[2], c, errnorm_local, n2cp1, cp1, ncp1;
+        for (it = 0; it < MAX_PURF_ITERS; it++) 
+        {
+            pdgemm_s = get_wtime_sec();
             pdgemm3D(myrow, mycol, mygrd, comm_row, comm_col, comm_grd,
                      comm0, nr, nc, nrows, ncols, D_block, D2_block,
-                     D3_block, &tmpbuf, &tmp_time);
-            gettimeofday(&tv2, NULL);
-            purif->timepdgemm += (tv2.tv_sec - tv1.tv_sec) +
-                (tv2.tv_usec - tv1.tv_usec) / 1000.0 / 1000.0;
-            purif->timedgemm += tmp_time;
+                     D3_block, &tmpbuf, &dgemm_time);
+            pdgemm_e = get_wtime_sec();
+            purif->timepdgemm += pdgemm_e - pdgemm_s;
+            purif->timedgemm  += dgemm_time;
 
-            gettimeofday(&tv1, NULL);
-
-            double errnorm;
-            if (purif->runpurif == 1) {
-                // stopping criterion
-                // errnorm = norm(D-D2, 'fro');
-                double _errnorm = 0.0;
-                #pragma omp parallel for reduction(+: _errnorm)
-                for (int i = 0; i < nrows * ncols; i++) {  
-                    _errnorm += (D_block[i] - D2_block[i]) *
-                            (D_block[i] - D2_block[i]);
-                }
-                MPI_Reduce(&_errnorm, &errnorm, 1,
-                           MPI_DOUBLE, MPI_SUM, 0, comm_purif);
-                if (myrank == 0) {
-                    errnorm = sqrt(errnorm);
-                }
-
-                // a cheaper stopping criterion may be to
-                // check the trace of D*D
-                // and stop when it is close to no. occupied orbitals
-                // (5 in this case)
-                // fprintf('trace D*D //f\n', trace(D*D);
-                // might be possible to "lag" the computation
-                // of c by one iteration
-                // so that the global communication for
-                // traces can be overlapped.
+            tr_s = get_wtime_sec();
+            if (purif->runpurif == 1) 
+            {
+                // Stopping criterion: errnorm = norm(D-D2, 'fro');
+                // A cheaper stopping criterion may be to check the trace of D*D and
+                // stop when it is close to no. occupied orbitals (5 in this case).
+                // fprintf('trace D*D //f\n', trace(D*D));
+                // Might be possible to "lag" the computation of c by one iteration
+                // so that the global communication for traces can be overlapped.
                 // Note: c appears to converge to 0.5           
                 // c = trace(D2-D3) / trace(D-D2);
-                double c;
-                double _tr = 0.0;
-                double _tr2 = 0.0;
-                double tr;
-                double tr2;
-                #pragma omp parallel for reduction(+: _tr, _tr2)
-                for (int i = 0; i < lentr; i++) {
-                    _tr += D2_block[(i + starttrrow) * ncols + i + starttrcol] -
-                        D3_block[(i + starttrrow) * ncols + i + starttrcol];
-                    _tr2 += D_block[(i + starttrrow) * ncols + i + starttrcol] -
-                        D2_block[(i + starttrrow) * ncols + i + starttrcol];
+                errnorm_local = 0.0;
+                tr_local[0] = 0.0;
+                tr_local[1] = 0.0;
+                for (int i = 0; i < lentr; i++) 
+                {
+                    int idx_ii = (i + starttrrow) * ncols + (i + starttrcol);
+                    tr_local[0] += D2_block[idx_ii] - D3_block[idx_ii];
+                    tr_local[1] +=  D_block[idx_ii] - D2_block[idx_ii];
                 }
-
-                // Jeff: This is the result of fusion of
-                //       two Reduce and one Bcast
-                //       calls that were used to determine tr and tr2, hence c.
-                double itmp[2], otmp[2];
-                itmp[0] = _tr;
-                itmp[1] = _tr2;
-                MPI_Allreduce(itmp, otmp, 2, MPI_DOUBLE, MPI_SUM, comm_purif);
-                tr = otmp[0];
-                tr2 = otmp[1];
-                c = tr / tr2;
-                if (c < 0.5) {
-                    #pragma omp parallel for
-                    for (int i = 0; i < nrows * ncols; i++) {
+                MPI_Allreduce(tr_local, tr, 2, MPI_DOUBLE, MPI_SUM, comm_purif);
+                c = tr[0] / tr[1];
+                
+                n2cp1 = 1.0 - 2.0 * c;
+                cp1   = c + 1.0;
+                ncp1  = 1.0 - c;
+                if (c < 0.5) 
+                {
+                    #pragma omp parallel for reduction(+: errnorm_local)
+                    #pragma simd
+                    for (int i = 0; i < nrows * ncols; i++) 
+                    {
+                        double D_D2 = D_block[i] - D2_block[i];
+                        errnorm_local += D_D2 * D_D2;
+                        
                         // D = ((1-2*c)*D + (1+c)*D2 - D3) / (1-c);
-                        D_block[i] = ((1.0 - 2.0 * c) * D_block[i] +
-                            (1.0 + c) * D2_block[i] - D3_block[i]) / (1.0 - c);
+                        D_block[i] = (n2cp1 * D_block[i] + cp1 * D2_block[i] - D3_block[i]) / ncp1;
                     }
                 } else {
-                    #pragma omp parallel for
-                    for (int i = 0; i < nrows * ncols; i++) {
+                    #pragma omp parallel for reduction(+: errnorm_local)
+                    #pragma simd
+                    for (int i = 0; i < nrows * ncols; i++) 
+                    {
+                        double D_D2 = D_block[i] - D2_block[i];
+                        errnorm_local += D_D2 * D_D2;
+                        
                         // D = ((1+c)*D2 - D3) / c;
-                        D_block[i] =
-                            ((1.0 + c) * D2_block[i] - D3_block[i]) / c;
+                        D_block[i] = (cp1 * D2_block[i] - D3_block[i]) / c;
                     }
                 }
                 
-            }          
-            MPI_Bcast(&errnorm, 1, MPI_DOUBLE, 0, comm0);
-            if (errnorm < 1e-11) {
-                break;
+                MPI_Reduce(&errnorm_local, &errnorm, 1, MPI_DOUBLE, MPI_SUM, 0, comm_purif);
+                if (myrank == 0) errnorm = sqrt(errnorm);
             }
-            gettimeofday(&tv2, NULL);
-            purif->timetr += (tv2.tv_sec - tv1.tv_sec) +
-                (tv2.tv_usec - tv1.tv_usec) / 1000.0 / 1000.0;
+            MPI_Bcast(&errnorm, 1, MPI_DOUBLE, 0, comm0);
+            tr_e = get_wtime_sec();
+            purif->timetr += tr_e - tr_s;
+            if (errnorm < 1e-11) break;
         }
 
         gettimeofday(&tv1, NULL);
