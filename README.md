@@ -87,7 +87,7 @@ The following commands will use ICC and Intel MPI to compile ARMCI-MPI. You can 
 
 ```shell
 cd $WORK_TOP
-# Dont's use the latest version of Global Array, we haven't test it yet
+# Global Arrays 5.3 is the latest version GTFock can use
 wget http://hpc.pnl.gov/globalarrays/download/ga-5-3.tgz
 tar xzf ga-5-3.tgz
 cd ga-5-3
