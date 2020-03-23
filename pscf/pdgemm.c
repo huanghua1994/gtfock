@@ -72,7 +72,7 @@ void myTranspose(double *src, double *dst, int nrows, int ncols)
         
         for (int icol = icol0; icol < icol1; icol++)
         {
-            #pragma simd
+            PRAGMA_SIMD
             for (int irow = irow0; irow < irow1; irow++)
             {
                 int src_idx  = irow * ncols + icol;
@@ -519,8 +519,7 @@ void allocate_tmpbuf(int nrows, int ncols, int *nr, int *nc, tmpbuf_t *tmpbuf)
     tmpbuf->S_i = tmpbuf->A_i + block_size_align64b;
     tmpbuf->C_i = tmpbuf->S_i + block_size_align64b;
 
-    #pragma omp parallel for schedule(static)
-    #pragma simd
+    #pragma omp parallel for simd schedule(static)
     for (int i = 0; i < nrows0 * ncols0; i++)
     {
         tmpbuf->A[i] = 0;
